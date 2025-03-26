@@ -332,11 +332,6 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
     return (
       <Card className="w-full h-full overflow-auto">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">
-              Editor
-            </CardTitle>
-          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Tabs defaultValue="properties" value={activeTab} onValueChange={setActiveTab} className="w-full">
