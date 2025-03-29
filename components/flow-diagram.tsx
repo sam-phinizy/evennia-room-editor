@@ -31,6 +31,7 @@ import { useAttributeSchema } from "@/hooks/use-attribute-schema"
 import { AttributeSchemaItem } from "@/components/attribute-schema-modal"
 import { convertJsonToEvenniaBatchCode } from "@/lib/batchCodeConverter"
 import { useToast } from "@/components/ui/use-toast"
+import { roomApi, exitApi, type RoomResponse, type ExitResponse } from "@/lib/api-service"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -234,24 +235,7 @@ const createRoomInApi = async (roomData: {
   attributes?: Record<string, any>;
 }) => {
   try {
-    const response = await fetch('http://127.0.0.1:8000/room', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        name: roomData.name,
-        description: roomData.description || "",
-        attributes: roomData.attributes || {}
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await roomApi.createRoom(roomData);
     return data;
   } catch (error) {
     console.error("Error creating room in API:", error);
@@ -268,26 +252,7 @@ const createExitInApi = async (exitData: {
   attributes?: Record<string, any>;
 }) => {
   try {
-    const response = await fetch('http://127.0.0.1:8000/exit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        name: exitData.name,
-        description: exitData.description || "",
-        source_id: parseInt(exitData.source_id),
-        destination_id: parseInt(exitData.destination_id),
-        attributes: exitData.attributes || {}
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await exitApi.createExit(exitData);
     return data;
   } catch (error) {
     console.error("Error creating exit in API:", error);
@@ -298,18 +263,7 @@ const createExitInApi = async (exitData: {
 // Delete a room from the API
 const deleteRoomFromApi = async (roomId: string | number) => {
   try {
-    const response = await fetch(`http://127.0.0.1:8000/room/${roomId}`, {
-      method: 'DELETE',
-      headers: {
-        'accept': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return true;
+    return await roomApi.deleteRoom(roomId);
   } catch (error) {
     console.error(`Error deleting room ${roomId} from API:`, error);
     throw error;
@@ -319,18 +273,7 @@ const deleteRoomFromApi = async (roomId: string | number) => {
 // Delete an exit from the API
 const deleteExitFromApi = async (exitId: string | number) => {
   try {
-    const response = await fetch(`http://127.0.0.1:8000/exit/${exitId}`, {
-      method: 'DELETE',
-      headers: {
-        'accept': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return true;
+    return await exitApi.deleteExit(exitId);
   } catch (error) {
     console.error(`Error deleting exit ${exitId} from API:`, error);
     throw error;
@@ -356,15 +299,18 @@ const loadFromStorage = () => {
   }
 }
 
+// Define the interface for selected elements
+interface SelectedElements {
+  nodes: Node[];
+  edges: Edge[];
+}
+
 const FlowDiagramInner = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState(loadFromStorage().nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(loadFromStorage().edges)
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null)
-  const [selectedElements, setSelectedElements] = useState<{
-    nodes: Node[]
-    edges: Edge[]
-  }>({
+  const [selectedElements, setSelectedElements] = useState<SelectedElements>({
     nodes: [],
     edges: [],
   })
@@ -1000,13 +946,7 @@ const FlowDiagramInner = () => {
         description: `Fetching rooms starting from ID ${roomId} with depth ${depthNum}...`,
       })
       
-      const response = await fetch(`http://127.0.0.1:8000/room_graph?start_room_id=${roomId}&depth=${depthNum}`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`)
-      }
-      
-      const data = await response.json()
+      const data = await roomApi.fetchRoomGraph(roomId, depthNum);
       
       // Validate response data structure
       if (!data || !data.rooms || !data.exits) {

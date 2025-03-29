@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 import SchemaEditor from "./schema-editor"
 import { useToast } from "@/components/ui/use-toast"
+import { roomApi, exitApi } from "@/lib/api-service"
 
 interface PropertySidebarProps {
   selectedNode?: Node | null
@@ -71,24 +72,12 @@ const updateRoomInApi = async (roomId: string | number, roomData: {
         }), {})
       : {};
       
-    const response = await fetch(`http://127.0.0.1:8000/room/${roomId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        name: roomData.name,
-        description: roomData.description || "",
-        attributes: stringAttributes
-      })
+    const data = await roomApi.updateRoom({
+      id: roomId,
+      name: roomData.name,
+      description: roomData.description || "",
+      attributes: stringAttributes
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
     return data;
   } catch (error) {
     console.error(`Error updating room ${roomId} in API:`, error);
@@ -111,24 +100,12 @@ const updateExitInApi = async (exitId: string | number, exitData: {
         }), {})
       : {};
       
-    const response = await fetch(`http://127.0.0.1:8000/exit/${exitId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        name: exitData.name,
-        description: exitData.description || "",
-        attributes: stringAttributes
-      })
+    const data = await exitApi.updateExit({
+      id: exitId,
+      name: exitData.name,
+      description: exitData.description || "",
+      attributes: stringAttributes
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
     return data;
   } catch (error) {
     console.error(`Error updating exit ${exitId} in API:`, error);
