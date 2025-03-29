@@ -22,7 +22,7 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, Download, FileJson, Code } from "lucide-react"
+import { Plus, Trash2, Download, FileJson, Code, Database } from "lucide-react"
 import CustomNode from "./custom-node"
 import CustomEdge from "./custom-edge"
 import PropertySidebar from "./property-sidebar"
@@ -30,6 +30,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { useAttributeSchema } from "@/hooks/use-attribute-schema"
 import { AttributeSchemaItem } from "@/components/attribute-schema-modal"
 import { convertJsonToEvenniaBatchCode } from "@/lib/batchCodeConverter"
+import { useToast } from "@/components/ui/use-toast"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -260,6 +261,7 @@ const FlowDiagramInner = () => {
   const { screenToFlowPosition } = useReactFlow()
   // Get schema at the component level, not inside a callback
   const { schema } = useAttributeSchema()
+  const { toast } = useToast()
 
   // Save to local storage whenever nodes or edges change
   useEffect(() => {
@@ -612,6 +614,386 @@ const FlowDiagramInner = () => {
     }
   }, [nodes, edges])
 
+  // Fetch rooms from API
+  const fetchRooms = useCallback(async () => {
+    try {
+      const startRoomId = prompt("Enter start room ID:", "1")
+      if (!startRoomId) return
+      
+      const depth = prompt("Enter depth (1-3):", "1")
+      if (!depth) return
+      
+      // Validate inputs
+      const roomId = parseInt(startRoomId, 10)
+      const depthNum = parseInt(depth, 10)
+      
+      if (isNaN(roomId) || roomId <= 0) {
+        toast({
+          title: "Invalid Input",
+          description: "Room ID must be a positive number",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (isNaN(depthNum) || depthNum < 1 || depthNum > 3) {
+        toast({
+          title: "Invalid Input",
+          description: "Depth must be between 1 and 3",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      toast({
+        title: "Loading",
+        description: `Fetching rooms starting from ID ${roomId} with depth ${depthNum}...`,
+      })
+      
+      const response = await fetch(`http://127.0.0.1:8000/room_graph?start_room_id=${roomId}&depth=${depthNum}`)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      // Validate response data structure
+      if (!data || !data.rooms || !data.exits) {
+        throw new Error("Invalid response format from server")
+      }
+      
+      if (Object.keys(data.rooms).length === 0) {
+        toast({
+          title: "No rooms found",
+          description: `No rooms found with ID ${roomId}`,
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Clear existing diagram
+      setNodes([])
+      setEdges([])
+      
+      // Process rooms and exits to create nodes and edges
+      const newNodes: Node[] = []
+      const newEdges: Edge[] = []
+      
+      // Add rooms as nodes
+      Object.values(data.rooms).forEach((room: any) => {
+        try {
+          const roomNode: Node = {
+            id: room.id.toString(),
+            type: "custom",
+            data: { 
+              label: room.name || `Room ${room.id}`,
+              description: room.attributes?.desc || "",
+              // Add any other room attributes prefixed with attr_
+              ...Object.entries(room.attributes || {}).reduce((acc, [key, value]) => ({
+                ...acc,
+                [`attr_${key}`]: value
+              }), {})
+            },
+            position: {
+              x: Math.random() * 800,
+              y: Math.random() * 600,
+            },
+          }
+          newNodes.push(roomNode)
+        } catch (err) {
+          console.error("Error processing room:", err, room)
+        }
+      })
+      
+      // Add exits as edges
+      Object.values(data.exits).forEach((exit: any) => {
+        try {
+          // Verify that both source and target rooms exist
+          const sourceExists = newNodes.some(node => node.id === exit.source_id.toString())
+          const targetExists = newNodes.some(node => node.id === exit.destination_id.toString())
+          
+          if (!sourceExists || !targetExists) {
+            console.warn(`Skipping exit ${exit.id}: Missing source or target room`)
+            return
+          }
+          
+          const edgeId = `e${exit.id}`
+          
+          // Create edge without hardcoded handles - we'll set them dynamically later
+          const newEdge: Edge = {
+            id: edgeId,
+            source: exit.source_id.toString(),
+            target: exit.destination_id.toString(),
+            type: "custom",
+            data: {
+              label: exit.name || "Exit",
+              description: exit.attributes?.desc || "",
+              // Add any other exit attributes prefixed with attr_
+              ...Object.entries(exit.attributes || {}).reduce((acc, [key, value]) => ({
+                ...acc,
+                [`attr_${key}`]: value
+              }), {})
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 20,
+              height: 20,
+              color: "#3b82f6",
+            },
+          }
+          newEdges.push(newEdge)
+        } catch (err) {
+          console.error("Error processing exit:", err, exit)
+        }
+      })
+      
+      // Apply auto-layout to position nodes in a more organized way
+      const nodePositions: Record<string, {x: number, y: number}> = {}
+      
+      // Create a basic graph representation to find root nodes
+      const graphIn: Record<string, string[]> = {}
+      const graphOut: Record<string, string[]> = {}
+      
+      // Initialize empty arrays for each node
+      newNodes.forEach(node => {
+        graphIn[node.id] = []
+        graphOut[node.id] = []
+      })
+      
+      // Fill in graph connections
+      newEdges.forEach(edge => {
+        graphOut[edge.source].push(edge.target)
+        graphIn[edge.target].push(edge.source)
+      })
+      
+      // Find root nodes (nodes with no incoming edges or the first one if all have incoming)
+      const rootNodes: string[] = []
+      const startNodeId = data.rooms[startRoomId] ? startRoomId.toString() : null
+      
+      if (startNodeId && graphIn[startNodeId]) {
+        // If the requested start node exists, start with it
+        rootNodes.push(startNodeId)
+      } else {
+        // Otherwise find nodes without incoming connections
+        newNodes.forEach(node => {
+          if (graphIn[node.id].length === 0) {
+            rootNodes.push(node.id)
+          }
+        })
+        
+        // If no root nodes found (circular graph), just pick the first node
+        if (rootNodes.length === 0 && newNodes.length > 0) {
+          rootNodes.push(newNodes[0].id)
+        }
+      }
+      
+      // Width and height settings for layout
+      const nodeWidth = 200
+      const nodeHeight = 150
+      const horizontalSpacing = 300
+      const verticalSpacing = 200
+      
+      // Position nodes in a tree-like structure using BFS
+      const positioned = new Set<string>()
+      const queue: Array<{id: string, level: number, position: number}> = []
+      
+      // Initialize with root nodes
+      let initialY = 100
+      rootNodes.forEach(nodeId => {
+        queue.push({id: nodeId, level: 0, position: 0})
+        nodePositions[nodeId] = {x: 150, y: initialY}
+        positioned.add(nodeId)
+        initialY += verticalSpacing
+      })
+      
+      // Track max positions at each level to avoid overlap
+      const levelMaxPositions: Record<number, number> = {}
+      
+      // BFS traversal
+      while (queue.length > 0) {
+        const {id, level, position} = queue.shift()!
+        
+        // Process children
+        const children = graphOut[id] || []
+        const childCount = children.length
+        
+        // Initialize level if not exists
+        if (!levelMaxPositions[level + 1]) {
+          levelMaxPositions[level + 1] = 0
+        }
+        
+        // Calculate starting position for children
+        const startPos = Math.max(position - (childCount - 1) / 2, levelMaxPositions[level + 1])
+        
+        // Position each child
+        children.forEach((childId, index) => {
+          if (!positioned.has(childId)) {
+            const childPosition = startPos + index
+            const childX = 150 + (level + 1) * horizontalSpacing
+            const childY = 100 + childPosition * verticalSpacing
+            
+            nodePositions[childId] = {x: childX, y: childY}
+            positioned.add(childId)
+            
+            queue.push({id: childId, level: level + 1, position: childPosition})
+            
+            // Update max position for this level
+            levelMaxPositions[level + 1] = Math.max(levelMaxPositions[level + 1], childPosition + 1)
+          }
+        })
+      }
+      
+      // Position any remaining unpositioned nodes
+      let fallbackY = 100
+      newNodes.forEach(node => {
+        if (!nodePositions[node.id]) {
+          // Find any connected nodes that are already positioned
+          const connectedNodes = [...(graphIn[node.id] || []), ...(graphOut[node.id] || [])]
+            .filter(id => nodePositions[id])
+          
+          if (connectedNodes.length > 0) {
+            // Position near a connected node
+            const connectedId = connectedNodes[0]
+            const connectedPos = nodePositions[connectedId]
+            
+            nodePositions[node.id] = {
+              x: connectedPos.x + horizontalSpacing,
+              y: connectedPos.y + 50
+            }
+          } else {
+            // No connections, position at the end
+            nodePositions[node.id] = {
+              x: 150,
+              y: fallbackY
+            }
+            fallbackY += verticalSpacing
+          }
+        }
+      })
+      
+      // Apply positions to nodes
+      const positionedNodes = newNodes.map(node => ({
+        ...node,
+        position: nodePositions[node.id] || { x: Math.random() * 800, y: Math.random() * 600 }
+      }))
+      
+      // Now that we have positions, we can assign better edge handles
+      const enhancedEdges = newEdges.map(edge => {
+        const sourcePos = nodePositions[edge.source]
+        const targetPos = nodePositions[edge.target]
+        
+        if (sourcePos && targetPos) {
+          // Determine direction based on relative positions
+          const xDiff = targetPos.x - sourcePos.x
+          const yDiff = targetPos.y - sourcePos.y
+          
+          let sourceHandle, targetHandle
+          
+          // Check if there's a reverse edge (bidirectional connection)
+          const hasReverseEdge = newEdges.some(e => 
+            e.source === edge.target && e.target === edge.source
+          )
+          
+          // For horizontal layouts
+          if (Math.abs(xDiff) >= Math.abs(yDiff)) {
+            if (xDiff > 0) {
+              // Target is to the right
+              sourceHandle = "right-source"
+              targetHandle = "left-target"
+            } else {
+              // Target is to the left
+              sourceHandle = "left-source"
+              targetHandle = "right-target"
+            }
+            
+            // For bidirectional edges, offset one slightly to avoid overlap
+            if (hasReverseEdge && edge.source > edge.target) {
+              // This is the "return" edge, offset it
+              if (yDiff >= 0) {
+                // Offset edges upward
+                sourceHandle = "top-source"
+                targetHandle = "top-target"
+              } else {
+                // Offset edges downward
+                sourceHandle = "bottom-source"
+                targetHandle = "bottom-target"
+              }
+            }
+          } 
+          // For vertical layouts
+          else {
+            if (yDiff > 0) {
+              // Target is below
+              sourceHandle = "bottom-source"
+              targetHandle = "top-target"
+            } else {
+              // Target is above
+              sourceHandle = "top-source"
+              targetHandle = "bottom-target"
+            }
+            
+            // For bidirectional edges, offset one slightly to avoid overlap
+            if (hasReverseEdge && edge.source > edge.target) {
+              // This is the "return" edge, offset it
+              if (xDiff >= 0) {
+                // Offset edges to the right
+                sourceHandle = "right-source"
+                targetHandle = "right-target"
+              } else {
+                // Offset edges to the left
+                sourceHandle = "left-source"
+                targetHandle = "left-target"
+              }
+            }
+          }
+          
+          return {
+            ...edge,
+            sourceHandle,
+            targetHandle
+          }
+        }
+        
+        return edge
+      })
+      
+      if (positionedNodes.length === 0) {
+        toast({
+          title: "No valid rooms",
+          description: "Could not create any valid rooms from the response",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Set new nodes and edges
+      setNodes(positionedNodes)
+      setEdges(enhancedEdges)
+      
+      // Notify user
+      toast({
+        title: "Rooms loaded",
+        description: `Loaded ${positionedNodes.length} rooms and ${enhancedEdges.length} exits`,
+      })
+      
+      // Auto-arrange the layout
+      if (reactFlowInstance) {
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 0.2 })
+        }, 100)
+      }
+      
+    } catch (error) {
+      console.error("Error fetching rooms:", error)
+      toast({
+        title: "Error",
+        description: `Failed to fetch rooms: ${error instanceof Error ? error.message : String(error)}`,
+        variant: "destructive",
+      })
+    }
+  }, [setNodes, setEdges, reactFlowInstance, toast])
+
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
       <ResizablePanel defaultSize={75} minSize={30}>
@@ -640,6 +1022,10 @@ const FlowDiagramInner = () => {
               <Button onClick={onAddNode} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 Add Node
+              </Button>
+              <Button onClick={fetchRooms} variant="outline" className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Get Room(s)
               </Button>
               <Button onClick={onClear} variant="outline">
                 Clear All
