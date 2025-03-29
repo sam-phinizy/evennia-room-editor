@@ -965,7 +965,7 @@ const FlowDiagramInner = () => {
   }, [nodes, edges])
 
   // Fetch rooms from API
-  const fetchRooms = useCallback(async () => {
+  const loadRooms = useCallback(async () => {
     try {
       const startRoomId = prompt("Enter start room ID:", "1")
       if (!startRoomId) return
@@ -1022,9 +1022,9 @@ const FlowDiagramInner = () => {
         return
       }
       
-      // Clear existing diagram
-      setNodes([])
-      setEdges([])
+      // Get existing node and edge IDs to avoid duplicates
+      const existingNodeIds = new Set(nodes.map(node => node.id))
+      const existingEdgeIds = new Set(edges.map(edge => edge.id))
       
       // Process rooms and exits to create nodes and edges
       const newNodes: Node[] = []
@@ -1033,12 +1033,20 @@ const FlowDiagramInner = () => {
       // Add rooms as nodes
       Object.values(data.rooms).forEach((room: any) => {
         try {
+          const roomId = room.id.toString()
+          
+          // Skip if this room already exists
+          if (existingNodeIds.has(roomId)) {
+            return
+          }
+          
           const roomNode: Node = {
-            id: room.id.toString(),
+            id: roomId,
             type: "custom",
             data: { 
               label: room.name || `Room ${room.id}`,
               description: room.attributes?.desc || "",
+              api_id: room.id, // Store the API ID
               // Add any other room attributes prefixed with attr_
               ...Object.entries(room.attributes || {}).reduce((acc, [key, value]) => ({
                 ...acc,
@@ -1051,6 +1059,7 @@ const FlowDiagramInner = () => {
             },
           }
           newNodes.push(roomNode)
+          existingNodeIds.add(roomId) // Add to existing set to track
         } catch (err) {
           console.error("Error processing room:", err, room)
         }
@@ -1059,26 +1068,35 @@ const FlowDiagramInner = () => {
       // Add exits as edges
       Object.values(data.exits).forEach((exit: any) => {
         try {
-          // Verify that both source and target rooms exist
-          const sourceExists = newNodes.some(node => node.id === exit.source_id.toString())
-          const targetExists = newNodes.some(node => node.id === exit.destination_id.toString())
+          const edgeId = `e${exit.id}`
+          
+          // Skip if this exit already exists
+          if (existingEdgeIds.has(edgeId)) {
+            return
+          }
+          
+          const sourceId = exit.source_id.toString()
+          const targetId = exit.destination_id.toString()
+          
+          // Check if both source and target rooms exist (either in existing nodes or new nodes)
+          const sourceExists = existingNodeIds.has(sourceId)
+          const targetExists = existingNodeIds.has(targetId)
           
           if (!sourceExists || !targetExists) {
             console.warn(`Skipping exit ${exit.id}: Missing source or target room`)
             return
           }
           
-          const edgeId = `e${exit.id}`
-          
           // Create edge without hardcoded handles - we'll set them dynamically later
           const newEdge: Edge = {
             id: edgeId,
-            source: exit.source_id.toString(),
-            target: exit.destination_id.toString(),
+            source: sourceId,
+            target: targetId,
             type: "custom",
             data: {
               label: exit.name || "Exit",
               description: exit.attributes?.desc || "",
+              api_id: exit.id, // Store the API ID
               // Add any other exit attributes prefixed with attr_
               ...Object.entries(exit.attributes || {}).reduce((acc, [key, value]) => ({
                 ...acc,
@@ -1093,10 +1111,26 @@ const FlowDiagramInner = () => {
             },
           }
           newEdges.push(newEdge)
+          existingEdgeIds.add(edgeId) // Add to existing set to track
         } catch (err) {
           console.error("Error processing exit:", err, exit)
         }
       })
+      
+      if (newNodes.length === 0 && newEdges.length === 0) {
+        toast({
+          title: "No new rooms or exits",
+          description: "All rooms and exits already exist in the diagram",
+        })
+        return
+      }
+      
+      // Create a combined set of all nodes (existing + new)
+      const allNodes = [...nodes, ...newNodes]
+      const allEdges = [...edges, ...newEdges]
+      
+      // Apply auto-layout to position new nodes in a more organized way
+      // ... (keep positioning code similar to original function)
       
       // Apply auto-layout to position nodes in a more organized way
       const nodePositions: Record<string, {x: number, y: number}> = {}
@@ -1106,130 +1140,126 @@ const FlowDiagramInner = () => {
       const graphOut: Record<string, string[]> = {}
       
       // Initialize empty arrays for each node
-      newNodes.forEach(node => {
+      allNodes.forEach(node => {
         graphIn[node.id] = []
         graphOut[node.id] = []
+        
+        // Store existing node positions
+        if (nodes.find(n => n.id === node.id)) {
+          nodePositions[node.id] = node.position
+        }
       })
       
       // Fill in graph connections
-      newEdges.forEach(edge => {
+      allEdges.forEach(edge => {
         graphOut[edge.source].push(edge.target)
         graphIn[edge.target].push(edge.source)
       })
       
       // Find root nodes (nodes with no incoming edges or the first one if all have incoming)
-      const rootNodes: string[] = []
+      const newRootNodeIds: string[] = []
       const startNodeId = data.rooms[startRoomId] ? startRoomId.toString() : null
       
-      if (startNodeId && graphIn[startNodeId]) {
+      if (startNodeId) {
         // If the requested start node exists, start with it
-        rootNodes.push(startNodeId)
+        newRootNodeIds.push(startNodeId)
       } else {
-        // Otherwise find nodes without incoming connections
+        // Otherwise find nodes without incoming connections among the new nodes
         newNodes.forEach(node => {
           if (graphIn[node.id].length === 0) {
-            rootNodes.push(node.id)
+            newRootNodeIds.push(node.id)
           }
         })
         
         // If no root nodes found (circular graph), just pick the first node
-        if (rootNodes.length === 0 && newNodes.length > 0) {
-          rootNodes.push(newNodes[0].id)
+        if (newRootNodeIds.length === 0 && newNodes.length > 0) {
+          newRootNodeIds.push(newNodes[0].id)
         }
       }
       
       // Width and height settings for layout
-      const nodeWidth = 200
-      const nodeHeight = 150
       const horizontalSpacing = 300
       const verticalSpacing = 200
       
-      // Position nodes in a tree-like structure using BFS
-      const positioned = new Set<string>()
-      const queue: Array<{id: string, level: number, position: number}> = []
-      
-      // Initialize with root nodes
-      let initialY = 100
-      rootNodes.forEach(nodeId => {
-        queue.push({id: nodeId, level: 0, position: 0})
-        nodePositions[nodeId] = {x: 150, y: initialY}
-        positioned.add(nodeId)
-        initialY += verticalSpacing
+      // Position nodes in a relative structure based on connections
+      // For each new root node, find the closest existing node to anchor it
+      newRootNodeIds.forEach(nodeId => {
+        if (nodePositions[nodeId]) return // Skip if already positioned
+        
+        // If this node is connected to existing nodes, position it relative to them
+        const connectedExistingNodes = [...graphIn[nodeId], ...graphOut[nodeId]]
+          .filter(id => nodes.some(n => n.id === id))
+        
+        if (connectedExistingNodes.length > 0) {
+          // Find the first connected existing node with a position
+          const connectedId = connectedExistingNodes.find(id => nodePositions[id]) || connectedExistingNodes[0]
+          
+          if (nodePositions[connectedId]) {
+            // Position relative to the connected node
+            const { x, y } = nodePositions[connectedId]
+            nodePositions[nodeId] = { x: x + horizontalSpacing, y: y }
+          } else {
+            // Fallback if connected node has no position yet
+            nodePositions[nodeId] = { x: Math.random() * 800, y: Math.random() * 600 }
+          }
+        } else {
+          // If not connected to existing nodes, position at a default location
+          // Find empty space in the diagram
+          const existingXs = Object.values(nodePositions).map(pos => pos.x)
+          const maxX = existingXs.length ? Math.max(...existingXs) : 0
+          nodePositions[nodeId] = { x: maxX + horizontalSpacing, y: 100 }
+        }
       })
       
-      // Track max positions at each level to avoid overlap
-      const levelMaxPositions: Record<number, number> = {}
+      // For remaining new nodes, position them based on connections
+      const positionedIds = new Set(Object.keys(nodePositions))
+      const remainingNewNodes = newNodes.filter(node => !positionedIds.has(node.id))
       
-      // BFS traversal
-      while (queue.length > 0) {
-        const {id, level, position} = queue.shift()!
+      // Use BFS to position connected nodes
+      const queue = [...newRootNodeIds]
+      while (queue.length > 0 && remainingNewNodes.length > 0) {
+        const currentId = queue.shift()!
+        if (!nodePositions[currentId]) continue
         
-        // Process children
-        const children = graphOut[id] || []
-        const childCount = children.length
+        // Process children (connected nodes)
+        const children = graphOut[currentId]?.filter(id => !positionedIds.has(id)) || []
         
-        // Initialize level if not exists
-        if (!levelMaxPositions[level + 1]) {
-          levelMaxPositions[level + 1] = 0
+        if (children.length > 0) {
+          // Position children in a semicircle around the parent
+          const parentPos = nodePositions[currentId]
+          const radius = horizontalSpacing
+          
+          children.forEach((childId, index) => {
+            const angle = (Math.PI / (children.length + 1)) * (index + 1)
+            const x = parentPos.x + radius * Math.cos(angle)
+            const y = parentPos.y + radius * Math.sin(angle)
+            
+            nodePositions[childId] = { x, y }
+            positionedIds.add(childId)
+            queue.push(childId)
+          })
         }
-        
-        // Calculate starting position for children
-        const startPos = Math.max(position - (childCount - 1) / 2, levelMaxPositions[level + 1])
-        
-        // Position each child
-        children.forEach((childId, index) => {
-          if (!positioned.has(childId)) {
-            const childPosition = startPos + index
-            const childX = 150 + (level + 1) * horizontalSpacing
-            const childY = 100 + childPosition * verticalSpacing
-            
-            nodePositions[childId] = {x: childX, y: childY}
-            positioned.add(childId)
-            
-            queue.push({id: childId, level: level + 1, position: childPosition})
-            
-            // Update max position for this level
-            levelMaxPositions[level + 1] = Math.max(levelMaxPositions[level + 1], childPosition + 1)
-          }
-        })
       }
       
-      // Position any remaining unpositioned nodes
-      let fallbackY = 100
-      newNodes.forEach(node => {
-        if (!nodePositions[node.id]) {
-          // Find any connected nodes that are already positioned
-          const connectedNodes = [...(graphIn[node.id] || []), ...(graphOut[node.id] || [])]
-            .filter(id => nodePositions[id])
-          
-          if (connectedNodes.length > 0) {
-            // Position near a connected node
-            const connectedId = connectedNodes[0]
-            const connectedPos = nodePositions[connectedId]
-            
-            nodePositions[node.id] = {
-              x: connectedPos.x + horizontalSpacing,
-              y: connectedPos.y + 50
-            }
-          } else {
-            // No connections, position at the end
-            nodePositions[node.id] = {
-              x: 150,
-              y: fallbackY
-            }
-            fallbackY += verticalSpacing
-          }
-        }
+      // Position any remaining nodes that weren't placed by BFS
+      remainingNewNodes.filter(node => !positionedIds.has(node.id)).forEach(node => {
+        // Find empty space for this node
+        const existingXs = Object.values(nodePositions).map(pos => pos.x)
+        const existingYs = Object.values(nodePositions).map(pos => pos.y)
+        const maxX = existingXs.length ? Math.max(...existingXs) : 0
+        const maxY = existingYs.length ? Math.max(...existingYs) : 0
+        
+        nodePositions[node.id] = { x: maxX + 150, y: maxY + 150 }
       })
       
-      // Apply positions to nodes
-      const positionedNodes = newNodes.map(node => ({
+      // Apply positions to new nodes
+      const positionedNewNodes = newNodes.map(node => ({
         ...node,
         position: nodePositions[node.id] || { x: Math.random() * 800, y: Math.random() * 600 }
       }))
       
-      // Now that we have positions, we can assign better edge handles
-      const enhancedEdges = newEdges.map(edge => {
+      // Now that we have positions, assign handles to new edges
+      const enhancedNewEdges = newEdges.map(edge => {
         const sourcePos = nodePositions[edge.source]
         const targetPos = nodePositions[edge.target]
         
@@ -1241,7 +1271,7 @@ const FlowDiagramInner = () => {
           let sourceHandle, targetHandle
           
           // Check if there's a reverse edge (bidirectional connection)
-          const hasReverseEdge = newEdges.some(e => 
+          const hasReverseEdge = allEdges.some(e => 
             e.source === edge.target && e.target === edge.source
           )
           
@@ -1308,23 +1338,14 @@ const FlowDiagramInner = () => {
         return edge
       })
       
-      if (positionedNodes.length === 0) {
-        toast({
-          title: "No valid rooms",
-          description: "Could not create any valid rooms from the response",
-          variant: "destructive",
-        })
-        return
-      }
-      
-      // Set new nodes and edges
-      setNodes(positionedNodes)
-      setEdges(enhancedEdges)
+      // Merge existing nodes/edges with new ones
+      setNodes([...nodes, ...positionedNewNodes])
+      setEdges([...edges, ...enhancedNewEdges])
       
       // Notify user
       toast({
         title: "Rooms loaded",
-        description: `Loaded ${positionedNodes.length} rooms and ${enhancedEdges.length} exits`,
+        description: `Added ${positionedNewNodes.length} new rooms and ${enhancedNewEdges.length} new exits`,
       })
       
       // Auto-arrange the layout
@@ -1333,16 +1354,15 @@ const FlowDiagramInner = () => {
           reactFlowInstance.fitView({ padding: 0.2 })
         }, 100)
       }
-      
     } catch (error) {
-      console.error("Error fetching rooms:", error)
+      console.error("Error loading rooms:", error)
       toast({
         title: "Error",
-        description: `Failed to fetch rooms: ${error instanceof Error ? error.message : String(error)}`,
+        description: `Failed to load rooms: ${error instanceof Error ? error.message : String(error)}`,
         variant: "destructive",
       })
     }
-  }, [setNodes, setEdges, reactFlowInstance, toast])
+  }, [nodes, edges, setNodes, setEdges, reactFlowInstance, toast])
 
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
@@ -1373,9 +1393,9 @@ const FlowDiagramInner = () => {
                 <Plus className="h-4 w-4" />
                 Add Node
               </Button>
-              <Button onClick={fetchRooms} variant="outline" className="flex items-center gap-2">
+              <Button onClick={loadRooms} variant="outline" className="flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Get Room(s)
+                Load Rooms
               </Button>
               <Button onClick={onClear} variant="outline">
                 Clear All
