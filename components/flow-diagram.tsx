@@ -227,6 +227,116 @@ const applySchemaToNodeData = (nodeData: { [key: string]: any }, schema: Attribu
   return nodeData
 }
 
+// Create a room in the API
+const createRoomInApi = async (roomData: { 
+  name: string; 
+  description: string; 
+  attributes?: Record<string, any>;
+}) => {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/room', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: roomData.name,
+        description: roomData.description || "",
+        attributes: roomData.attributes || {}
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error creating room in API:", error);
+    throw error;
+  }
+};
+
+// Create an exit in the API
+const createExitInApi = async (exitData: {
+  name: string;
+  description?: string;
+  source_id: string;
+  destination_id: string;
+  attributes?: Record<string, any>;
+}) => {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/exit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: exitData.name,
+        description: exitData.description || "",
+        source_id: parseInt(exitData.source_id),
+        destination_id: parseInt(exitData.destination_id),
+        attributes: exitData.attributes || {}
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error creating exit in API:", error);
+    throw error;
+  }
+};
+
+// Delete a room from the API
+const deleteRoomFromApi = async (roomId: string | number) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/room/${roomId}`, {
+      method: 'DELETE',
+      headers: {
+        'accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error deleting room ${roomId} from API:`, error);
+    throw error;
+  }
+};
+
+// Delete an exit from the API
+const deleteExitFromApi = async (exitId: string | number) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/exit/${exitId}`, {
+      method: 'DELETE',
+      headers: {
+        'accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error deleting exit ${exitId} from API:`, error);
+    throw error;
+  }
+};
+
 // Load data from local storage
 const loadFromStorage = () => {
   if (typeof window === "undefined") return { nodes: defaultNodes, edges: defaultEdges }
@@ -305,7 +415,7 @@ const FlowDiagramInner = () => {
 
   // Handle connections between nodes
   const onConnect = useCallback(
-    (params: Connection) => {
+    async (params: Connection) => {
       // Create a new edge with a label and directional marker
       const newEdge = {
         ...params,
@@ -313,7 +423,10 @@ const FlowDiagramInner = () => {
         animated: false,
         data: {
           label: "Exit",
+          description: "A path leading to another room",
           aliases: [], // Add empty aliases array by default
+          // Add a field for the API ID
+          api_id: undefined as number | undefined
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -330,42 +443,133 @@ const FlowDiagramInner = () => {
           newEdge.markerEnd.color = color
         }
       }
+      
+      try {
+        // Find source and target nodes
+        const sourceNode = nodes.find(node => node.id === params.source);
+        const targetNode = nodes.find(node => node.id === params.target);
+        
+        if (sourceNode && targetNode) {
+          // Check if the nodes have API IDs (meaning they exist in the backend)
+          const sourceApiId = sourceNode.data.api_id || sourceNode.id;
+          const targetApiId = targetNode.data.api_id || targetNode.id;
+          
+          // Create exit in API
+          const apiExit = await createExitInApi({
+            name: newEdge.data.label,
+            description: newEdge.data.description,
+            source_id: sourceApiId.toString(),
+            destination_id: targetApiId.toString(),
+            attributes: Object.entries(newEdge.data || {})
+              .filter(([key]) => key.startsWith('attr_'))
+              .reduce((acc, [key, value]) => ({
+                ...acc,
+                [key.replace('attr_', '')]: String(value)
+              }), {})
+          });
+          
+          // Update edge with API data
+          newEdge.data.api_id = apiExit.id;
+          
+          toast({
+            title: "Exit Created",
+            description: `Exit "${newEdge.data.label}" created successfully`,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to create exit:", error);
+        
+        toast({
+          title: "API Error",
+          description: "Exit created locally only. Failed to create in MUD.",
+          variant: "destructive",
+        });
+      }
 
       setEdges((eds) => addEdge(newEdge, eds))
     },
-    [setEdges],
+    [setEdges, nodes, toast],
   )
 
   // Add a new node to the diagram
-  const onAddNode = useCallback(() => {
+  const onAddNode = useCallback(async () => {
     const newNodeId = `${nodes.length + 1}`
 
     // Create basic node data with index signature for dynamic attributes
     const nodeData: {
       label: string;
+      description?: string;
       [key: string]: any;
     } = {
       label: `Room ${newNodeId}`,
+      description: "A new room with no description yet."
     }
 
     // Apply schema attributes to node data
     const nodeWithSchema = applySchemaToNodeData(nodeData, schema)
 
-    const newNode: Node = {
-      id: newNodeId,
-      type: "custom",
-      data: nodeWithSchema,
-      position: {
-        x: Math.random() * 500,
-        y: Math.random() * 500,
-      },
+    try {
+      // Create room in the API
+      const apiRoom = await createRoomInApi({
+        name: nodeData.label,
+        description: nodeData.description || "",
+        attributes: Object.entries(nodeWithSchema)
+          .filter(([key]) => key.startsWith('attr_'))
+          .reduce((acc, [key, value]) => ({
+            ...acc,
+            [key.replace('attr_', '')]: String(value)
+          }), {})
+      });
+
+      // Use the API-generated ID if available
+      const roomId = apiRoom.id?.toString() || newNodeId;
+
+      const newNode: Node = {
+        id: roomId,
+        type: "custom",
+        data: {
+          ...nodeWithSchema,
+          api_id: apiRoom.id, // Store the API ID for future reference
+        },
+        position: {
+          x: Math.random() * 500,
+          y: Math.random() * 500,
+        },
+      }
+      
+      setNodes((nds) => nds.concat(newNode));
+      
+      toast({
+        title: "Room Created",
+        description: `Room "${nodeData.label}" created with ID ${roomId}`,
+      });
+    } catch (error) {
+      console.error("Failed to create room:", error);
+      
+      // Create node locally even if API fails
+      const newNode: Node = {
+        id: newNodeId,
+        type: "custom",
+        data: nodeWithSchema,
+        position: {
+          x: Math.random() * 500,
+          y: Math.random() * 500,
+        },
+      }
+      
+      setNodes((nds) => nds.concat(newNode));
+      
+      toast({
+        title: "API Error",
+        description: "Room created locally only. Failed to create in MUD.",
+        variant: "destructive",
+      });
     }
-    setNodes((nds) => nds.concat(newNode))
-  }, [nodes, setNodes, schema])
+  }, [nodes, setNodes, schema, toast])
 
   // Handle connection end - add node on edge drop when connection isn't valid
   const onConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent) => {
+    async (event: MouseEvent | TouchEvent) => {
       // Check if the event has a valid source but was dropped in an empty area
       const targetIsPane = (event.target as HTMLElement).classList.contains('react-flow__pane');
 
@@ -388,8 +592,8 @@ const FlowDiagramInner = () => {
         // Get the position relative to the flow container
         const { top, left } = reactFlowWrapper.current.getBoundingClientRect();
 
-        // Generate new node id
-        const newNodeId = `${nodes.length + 1}`;
+        // Generate new node id for temporary use
+        const tempNodeId = `${nodes.length + 1}`;
 
         // Create position using screenToFlowPosition to convert screen to flow coordinates
         const position = reactFlowInstance.project({
@@ -400,48 +604,148 @@ const FlowDiagramInner = () => {
         // Create basic node data with index signature for dynamic attributes
         const nodeData: {
           label: string;
+          description?: string;
           [key: string]: any;
         } = {
-          label: `Room ${newNodeId}`,
+          label: `Room ${tempNodeId}`,
+          description: "A new room with no description yet."
         };
 
         // Apply schema attributes to node data
         const nodeWithSchema = applySchemaToNodeData(nodeData, schema);
 
-        // Create new node
-        const newNode: Node = {
-          id: newNodeId,
-          type: "custom",
-          data: nodeWithSchema,
-          position: position,
-        };
+        try {
+          // Create room in the API
+          const apiRoom = await createRoomInApi({
+            name: nodeData.label,
+            description: nodeData.description || "",
+            attributes: Object.entries(nodeWithSchema)
+              .filter(([key]) => key.startsWith('attr_'))
+              .reduce((acc, [key, value]) => ({
+                ...acc,
+                [key.replace('attr_', '')]: String(value)
+              }), {})
+          });
 
-        // Create new edge connecting from source to new node
-        const newEdge = {
-          id: `e-${sourceNodeId}-${newNodeId}`,
-          source: sourceNodeId,
-          target: newNodeId,
-          sourceHandle: sourceHandleId || undefined,
-          type: "custom",
-          animated: false,
-          data: {
-            label: "Exit",
-            aliases: [], // Add empty aliases array by default
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: "#888",
-          },
-        };
+          // Use the API-generated ID if available
+          const newNodeId = apiRoom.id?.toString() || tempNodeId;
 
-        // Add new node and edge
-        setNodes((nds) => nds.concat(newNode));
-        setEdges((eds) => eds.concat(newEdge));
+          // Create new node with API ID
+          const newNode: Node = {
+            id: newNodeId,
+            type: "custom",
+            data: {
+              ...nodeWithSchema,
+              api_id: apiRoom.id, // Store the API ID for future reference
+            },
+            position: position,
+          };
+
+          // Create new edge connecting from source to new node
+          const newEdge = {
+            id: `e-${sourceNodeId}-${newNodeId}`,
+            source: sourceNodeId,
+            target: newNodeId,
+            sourceHandle: sourceHandleId || undefined,
+            type: "custom",
+            animated: false,
+            data: {
+              label: "Exit",
+              description: "A path leading to another room",
+              aliases: [], // Add empty aliases array by default
+              api_id: undefined as number | undefined
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 20,
+              height: 20,
+              color: "#888",
+            },
+          };
+
+          // Try to create the exit in the API
+          try {
+            // Find source node
+            const sourceNode = nodes.find(node => node.id === sourceNodeId);
+            
+            if (sourceNode) {
+              // Get the API ID or use node ID as fallback
+              const sourceApiId = sourceNode.data.api_id || sourceNode.id;
+              
+              // Create exit in API
+              const apiExit = await createExitInApi({
+                name: newEdge.data.label,
+                description: newEdge.data.description,
+                source_id: sourceApiId.toString(),
+                destination_id: apiRoom.id.toString(),
+                attributes: Object.entries(newEdge.data || {})
+                  .filter(([key]) => key.startsWith('attr_'))
+                  .reduce((acc, [key, value]) => ({
+                    ...acc,
+                    [key.replace('attr_', '')]: String(value)
+                  }), {})
+              });
+              
+              // Update edge with API data
+              newEdge.data.api_id = apiExit.id;
+            }
+          } catch (error) {
+            console.error("Failed to create exit:", error);
+            // Continue anyway, the room and edge were created locally
+          }
+
+          // Add new node and edge
+          setNodes((nds) => nds.concat(newNode));
+          setEdges((eds) => eds.concat(newEdge));
+
+          toast({
+            title: "Room Created",
+            description: `Room "${nodeData.label}" created with ID ${newNodeId}`,
+          });
+        } catch (error) {
+          console.error("Failed to create room:", error);
+          
+          // Create node locally even if API fails
+          const newNode: Node = {
+            id: tempNodeId,
+            type: "custom",
+            data: nodeWithSchema,
+            position: position,
+          };
+
+          // Create new edge connecting from source to new node
+          const newEdge = {
+            id: `e-${sourceNodeId}-${tempNodeId}`,
+            source: sourceNodeId,
+            target: tempNodeId,
+            sourceHandle: sourceHandleId || undefined,
+            type: "custom",
+            animated: false,
+            data: {
+              label: "Exit",
+              aliases: [], // Add empty aliases array by default
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 20,
+              height: 20,
+              color: "#888",
+            },
+          };
+
+          // Add new node and edge
+          setNodes((nds) => nds.concat(newNode));
+          setEdges((eds) => eds.concat(newEdge));
+          
+          toast({
+            title: "API Error",
+            description: "Room created locally only. Failed to create in MUD.",
+            variant: "destructive",
+          });
+        }
       }
     },
-    [nodes, setNodes, setEdges, reactFlowInstance, schema]
+    [nodes, setNodes, setEdges, reactFlowInstance, schema, toast]
   );
 
   // Track selected elements
@@ -453,10 +757,56 @@ const FlowDiagramInner = () => {
   }, [])
 
   // Delete selected elements
-  const onDeleteSelected = useCallback(() => {
-    setNodes((nds) => nds.filter((node) => !selectedElements.nodes.find(n => n.id === node.id)))
-    setEdges((eds) => eds.filter((edge) => !selectedElements.edges.find(e => e.id === edge.id)))
-  }, [selectedElements, setNodes, setEdges])
+  const onDeleteSelected = useCallback(async () => {
+    // Track API deletion promises
+    const deletionPromises: Promise<any>[] = [];
+    
+    // Try to delete nodes in API
+    for (const node of selectedElements.nodes) {
+      if (node.data.api_id) {
+        deletionPromises.push(
+          deleteRoomFromApi(node.data.api_id).catch(err => {
+            console.error(`Failed to delete room ${node.id} from API:`, err);
+            // We'll continue with local deletion even if API deletion fails
+          })
+        );
+      }
+    }
+    
+    // Try to delete edges in API
+    for (const edge of selectedElements.edges) {
+      if (edge.data?.api_id) {
+        deletionPromises.push(
+          deleteExitFromApi(edge.data.api_id).catch(err => {
+            console.error(`Failed to delete exit ${edge.id} from API:`, err);
+            // We'll continue with local deletion even if API deletion fails
+          })
+        );
+      }
+    }
+    
+    // Wait for all API deletion attempts to complete (success or failure)
+    if (deletionPromises.length > 0) {
+      try {
+        await Promise.allSettled(deletionPromises);
+        toast({
+          title: "Elements Deleted",
+          description: `Deleted ${deletionPromises.length} elements from the MUD`,
+        });
+      } catch (error) {
+        console.error("Error during deletion:", error);
+        toast({
+          title: "API Error",
+          description: "Some elements may not have been deleted from the MUD",
+          variant: "destructive",
+        });
+      }
+    }
+    
+    // Always delete from local state
+    setNodes((nds) => nds.filter((node) => !selectedElements.nodes.find(n => n.id === node.id)));
+    setEdges((eds) => eds.filter((edge) => !selectedElements.edges.find(e => e.id === edge.id)));
+  }, [selectedElements, setNodes, setEdges, toast]);
 
   // Clear the diagram
   const onClear = useCallback(() => {

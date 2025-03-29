@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 import SchemaEditor from "./schema-editor"
+import { useToast } from "@/components/ui/use-toast"
 
 interface PropertySidebarProps {
   selectedNode?: Node | null
@@ -55,11 +56,92 @@ const applySchemaToNodeData = (nodeData: { [key: string]: any }, schema: Attribu
   return nodeData
 }
 
+// Update a room in the API
+const updateRoomInApi = async (roomId: string | number, roomData: { 
+  name: string; 
+  description: string; 
+  attributes?: Record<string, any>;
+}) => {
+  try {
+    // Convert all attribute values to strings
+    const stringAttributes = roomData.attributes 
+      ? Object.entries(roomData.attributes).reduce((acc, [key, value]) => ({
+          ...acc,
+          [key]: String(value)
+        }), {})
+      : {};
+      
+    const response = await fetch(`http://127.0.0.1:8000/room/${roomId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: roomData.name,
+        description: roomData.description || "",
+        attributes: stringAttributes
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Error updating room ${roomId} in API:`, error);
+    throw error;
+  }
+};
+
+// Update an exit in the API
+const updateExitInApi = async (exitId: string | number, exitData: {
+  name: string;
+  description?: string;
+  attributes?: Record<string, any>;
+}) => {
+  try {
+    // Convert all attribute values to strings
+    const stringAttributes = exitData.attributes 
+      ? Object.entries(exitData.attributes).reduce((acc, [key, value]) => ({
+          ...acc,
+          [key]: String(value)
+        }), {})
+      : {};
+      
+    const response = await fetch(`http://127.0.0.1:8000/exit/${exitId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: exitData.name,
+        description: exitData.description || "",
+        attributes: stringAttributes
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Error updating exit ${exitId} in API:`, error);
+    throw error;
+  }
+};
+
 export default function PropertySidebar({ selectedNode, selectedEdge }: PropertySidebarProps) {
   const { setNodes, setEdges, getNode, getEdge } = useReactFlow()
   const [newAttributeKey, setNewAttributeKey] = useState("")
   const [newAttributeValue, setNewAttributeValue] = useState("")
   const [schemaModalOpen, setSchemaModalOpen] = useState(false)
+  const { toast } = useToast()
 
   // Collapsible section states
   const [isBasicPropsOpen, setIsBasicPropsOpen] = useState(true)
@@ -74,6 +156,7 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
     (key: string, value: string) => {
       if (!selectedNode) return
 
+      // Update the node locally
       setNodes((nodes) =>
         nodes.map((node) => {
           if (node.id === selectedNode.id) {
@@ -103,14 +186,52 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
           return node
         }),
       )
+
+      // If this node has an API ID, update it in the API as well
+      if (selectedNode.data.api_id) {
+        // Use a timeout to batch updates and avoid sending too many API requests
+        const timeoutId = setTimeout(async () => {
+          try {
+            // Get the current node data after all local updates
+            const currentNode = getNode(selectedNode.id);
+            if (!currentNode) return;
+
+            // Prepare room data for API
+            const roomData = {
+              name: currentNode.data.label || "",
+              description: currentNode.data.description || "",
+              attributes: Object.entries(currentNode.data)
+                .filter(([key]) => key.startsWith('attr_'))
+                .reduce((acc, [key, value]) => ({
+                  ...acc,
+                  [key.replace('attr_', '')]: value
+                }), {})
+            };
+
+            // Update in API
+            await updateRoomInApi(currentNode.data.api_id, roomData);
+          } catch (error) {
+            console.error("Failed to update room in API:", error);
+            toast({
+              title: "API Error",
+              description: "Failed to update the room in the MUD",
+              variant: "destructive",
+            });
+          }
+        }, 500);  // 500ms debounce
+
+        // Clean up timeout if component unmounts or another update happens
+        return () => clearTimeout(timeoutId);
+      }
     },
-    [selectedNode, setNodes, schema],
+    [selectedNode, setNodes, schema, getNode, toast],
   )
 
   const updateEdgeData = useCallback(
     (key: string, value: any) => {
       if (!selectedEdge) return
 
+      // Update the edge locally
       setEdges((edges) =>
         edges.map((edge) => {
           if (edge.id === selectedEdge.id) {
@@ -151,8 +272,45 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
           return edge
         }),
       )
+
+      // If this edge has an API ID, update it in the API as well
+      if (selectedEdge.data?.api_id) {
+        // Use a timeout to batch updates and avoid sending too many API requests
+        const timeoutId = setTimeout(async () => {
+          try {
+            // Get the current edge data after all local updates
+            const currentEdge = getEdge(selectedEdge.id);
+            if (!currentEdge || !currentEdge.data) return;
+
+            // Prepare exit data for API
+            const exitData = {
+              name: currentEdge.data.label || "",
+              description: currentEdge.data.description || "",
+              attributes: Object.entries(currentEdge.data)
+                .filter(([key]) => key.startsWith('attr_'))
+                .reduce((acc, [key, value]) => ({
+                  ...acc,
+                  [key.replace('attr_', '')]: value
+                }), {})
+            };
+
+            // Update in API
+            await updateExitInApi(currentEdge.data.api_id, exitData);
+          } catch (error) {
+            console.error("Failed to update exit in API:", error);
+            toast({
+              title: "API Error",
+              description: "Failed to update the exit in the MUD",
+              variant: "destructive",
+            });
+          }
+        }, 500);  // 500ms debounce
+
+        // Clean up timeout if component unmounts or another update happens
+        return () => clearTimeout(timeoutId);
+      }
     },
-    [selectedEdge, setEdges, schema],
+    [selectedEdge, setEdges, schema, getEdge, toast],
   )
 
   const addAttribute = useCallback(() => {
