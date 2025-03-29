@@ -19,6 +19,7 @@ import ReactFlow, {
   type OnSelectionChangeParams,
   BackgroundVariant,
   useReactFlow,
+  reconnectEdge,
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { Button } from "@/components/ui/button"
@@ -436,6 +437,84 @@ const FlowDiagramInner = () => {
     },
     [setEdges, nodes, toast],
   )
+
+  // Add onReconnect handler
+  const onReconnect = useCallback(
+    async (oldEdge: Edge, newConnection: Connection) => {
+      // Check if the source or target has actually changed
+      if (oldEdge.source === newConnection.source && oldEdge.target === newConnection.target) {
+        // If nothing changed, just update the handles
+        setEdges((els) => reconnectEdge(oldEdge, newConnection, els));
+        return;
+      }
+
+      try {
+        // Find source and target nodes for the new connection
+        const sourceNode = nodes.find(node => node.id === newConnection.source);
+        const targetNode = nodes.find(node => node.id === newConnection.target);
+        
+        if (sourceNode && targetNode && oldEdge.data?.api_id) {
+          // First delete the old exit
+          await exitApi.deleteExit(oldEdge.data.api_id);
+          
+          // Get API IDs for the new connection
+          const sourceApiId = sourceNode.data.api_id || sourceNode.id;
+          const targetApiId = targetNode.data.api_id || targetNode.id;
+          
+          // Create new exit in API
+          const apiExit = await createExitInApi({
+            name: oldEdge.data?.label || "Exit",
+            description: oldEdge.data?.description || "A path leading to another room",
+            source_id: sourceApiId.toString(),
+            destination_id: targetApiId.toString(),
+            attributes: Object.entries(oldEdge.data || {})
+              .filter(([key]) => key.startsWith('attr_'))
+              .reduce((acc, [key, value]) => ({
+                ...acc,
+                [key.replace('attr_', '')]: String(value)
+              }), {})
+          });
+          
+          // Update the edge data with the new API ID
+          const updatedEdge: Edge = {
+            ...oldEdge,
+            source: newConnection.source || oldEdge.source,
+            target: newConnection.target || oldEdge.target,
+            sourceHandle: newConnection.sourceHandle || undefined,
+            targetHandle: newConnection.targetHandle || undefined,
+            data: {
+              ...oldEdge.data,
+              api_id: apiExit.id
+            }
+          };
+          
+          // Update edges with the reconnected edge
+          setEdges((els) => els.map(e => e.id === oldEdge.id ? updatedEdge : e));
+          
+          toast({
+            title: "Exit Updated",
+            description: "Exit connection updated successfully",
+          });
+        } else {
+          // If no API IDs involved, just update the local state
+          setEdges((els) => reconnectEdge(oldEdge, newConnection, els));
+        }
+      } catch (error) {
+        console.error("Failed to update exit connection:", error);
+        
+        // Revert to original connection
+        toast({
+          title: "API Error",
+          description: "Failed to update exit connection in MUD",
+          variant: "destructive",
+        });
+        
+        // Revert the edge to its original state
+        setEdges((els) => els.map(e => e.id === oldEdge.id ? oldEdge : e));
+      }
+    },
+    [nodes, setEdges, toast]
+  );
 
   // Add a new node to the diagram
   const onAddNode = useCallback(async () => {
@@ -1319,6 +1398,7 @@ const FlowDiagramInner = () => {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onSelectionChange={onSelectionChange}
+            onReconnect={onReconnect}
             connectOnClick={true}
             snapToGrid={true}
             snapGrid={[15, 15]}
