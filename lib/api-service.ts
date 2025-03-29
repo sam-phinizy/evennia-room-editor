@@ -83,8 +83,8 @@ export const roomApi = {
     }
   },
 
-  // Fetch room graph
-  fetchRoomGraph: async (
+  // read room graph
+  readRoomGraph: async (
     startRoomId: number,
     depth: number
   ): Promise<RoomGraphResponse> => {

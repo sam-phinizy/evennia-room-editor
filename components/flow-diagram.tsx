@@ -946,7 +946,7 @@ const FlowDiagramInner = () => {
         description: `Fetching rooms starting from ID ${roomId} with depth ${depthNum}...`,
       })
       
-      const data = await roomApi.fetchRoomGraph(roomId, depthNum);
+      const data = await roomApi.readRoomGraph(roomId, depthNum);
       
       // Validate response data structure
       if (!data || !data.rooms || !data.exits) {
