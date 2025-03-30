@@ -138,7 +138,6 @@ const CommandShortcut = ({
     />
   )
 }
-CommandShortcut.displayName = "CommandShortcut"
 
 export {
   Command,
@@ -148,6 +147,6 @@ export {
   CommandEmpty,
   CommandGroup,
   CommandItem,
-  CommandShortcut,
   CommandSeparator,
+  CommandShortcut,
 }

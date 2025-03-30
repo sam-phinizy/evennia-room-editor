@@ -38,6 +38,11 @@ export interface UpdateExitData {
   attributes?: Record<string, any>;
 }
 
+export interface RoomNamesEntry {
+  id: number;
+  name: string;
+}
+
 export interface RoomResponse {
   id: number;
   name: string;
@@ -68,6 +73,17 @@ export const roomApi = {
       return response.data;
     } catch (error) {
       console.error("Error creating room:", error);
+      throw error;
+    }
+  },
+
+  // Get room names
+  getRoomNames: async (): Promise<RoomNamesEntry[]> => {
+    try {
+      const response = await apiClient.get<RoomNamesEntry[]>("/rooms/names");
+      return response.data;
+    } catch (error) {
+      console.error("Error getting room names:", error);
       throw error;
     }
   },

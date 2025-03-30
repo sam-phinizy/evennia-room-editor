@@ -33,6 +33,7 @@ import { AttributeSchemaItem } from "@/components/attribute-schema-modal"
 import { convertJsonToEvenniaBatchCode } from "@/lib/batchCodeConverter"
 import { useToast } from "@/components/ui/use-toast"
 import { roomApi, exitApi, type RoomResponse, type ExitResponse } from "@/lib/api-service"
+import LoadRoomsModal from "./load-rooms-modal"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -315,6 +316,7 @@ const FlowDiagramInner = () => {
     nodes: [],
     edges: [],
   })
+  const [loadRoomsModalOpen, setLoadRoomsModalOpen] = useState(false)
   const { screenToFlowPosition } = useReactFlow()
   // Get schema at the component level, not inside a callback
   const { schema } = useAttributeSchema()
@@ -990,19 +992,10 @@ const FlowDiagramInner = () => {
   }, [nodes, edges])
 
   // Fetch rooms from API
-  const loadRooms = useCallback(async () => {
+  const loadRooms = useCallback(async (roomId: number, depth: number) => {
     try {
-      const startRoomId = prompt("Enter start room ID:", "1")
-      if (!startRoomId) return
-      
-      const depth = prompt("Enter depth (1-3):", "1")
-      if (!depth) return
-      
       // Validate inputs
-      const roomId = parseInt(startRoomId, 10)
-      const depthNum = parseInt(depth, 10)
-      
-      if (isNaN(roomId) || roomId <= 0) {
+      if (roomId <= 0) {
         toast({
           title: "Invalid Input",
           description: "Room ID must be a positive number",
@@ -1011,7 +1004,7 @@ const FlowDiagramInner = () => {
         return
       }
       
-      if (isNaN(depthNum) || depthNum < 1 || depthNum > 3) {
+      if (depth < 1 || depth > 3) {
         toast({
           title: "Invalid Input",
           description: "Depth must be between 1 and 3",
@@ -1022,10 +1015,10 @@ const FlowDiagramInner = () => {
       
       toast({
         title: "Loading",
-        description: `Fetching rooms starting from ID ${roomId} with depth ${depthNum}...`,
+        description: `Fetching rooms starting from ID ${roomId} with depth ${depth}...`,
       })
       
-      const data = await roomApi.readRoomGraph(roomId, depthNum);
+      const data = await roomApi.readRoomGraph(roomId, depth);
       
       // Validate response data structure
       if (!data || !data.rooms || !data.exits) {
@@ -1177,7 +1170,7 @@ const FlowDiagramInner = () => {
       
       // Find root nodes (nodes with no incoming edges or the first one if all have incoming)
       const newRootNodeIds: string[] = []
-      const startNodeId = data.rooms[startRoomId] ? startRoomId.toString() : null
+      const startNodeId = data.rooms[roomId] ? roomId.toString() : null
       
       if (startNodeId) {
         // If the requested start node exists, start with it
@@ -1413,7 +1406,7 @@ const FlowDiagramInner = () => {
                 <Plus className="h-4 w-4" />
                 Add Node
               </Button>
-              <Button onClick={loadRooms} variant="outline" className="flex items-center gap-2">
+              <Button onClick={() => setLoadRoomsModalOpen(true)} variant="outline" className="flex items-center gap-2">
                 <Database className="h-4 w-4" />
                 Load Rooms
               </Button>
@@ -1446,6 +1439,11 @@ const FlowDiagramInner = () => {
           selectedEdge={selectedElements.edges[0]}
         />
       </ResizablePanel>
+      <LoadRoomsModal 
+        open={loadRoomsModalOpen}
+        onOpenChange={setLoadRoomsModalOpen}
+        onLoadRooms={loadRooms}
+      />
     </ResizablePanelGroup>
   )
 }
