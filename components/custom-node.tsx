@@ -9,6 +9,7 @@ import { Button } from "./ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import DeleteConfirmationDialog from "./delete-confirmation-dialog"
 import { roomApi } from "@/lib/api-service"
+import { saveHiddenNode } from "./show-hidden-rooms"
 
 export default function CustomNode({ id, data, isConnectable, selected }: NodeProps) {
   const [isEditing, setIsEditing] = useState(false)
@@ -22,6 +23,14 @@ export default function CustomNode({ id, data, isConnectable, selected }: NodePr
   }
 
   const handleHide = () => {
+    // Get the node before removing it
+    const node = getNodes().find((node) => node.id === id);
+    
+    if (node) {
+      // Save the node to storage before removing it
+      saveHiddenNode(node);
+    }
+    
     // Only hide the node from the canvas, don't delete from DB
     setNodes((nodes) => nodes.filter((node) => node.id !== id))
     setEdges((edges) => edges.filter((edge) => edge.source !== id && edge.target !== id))

@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AttributeSchemaProvider } from '@/hooks/use-attribute-schema'
+import { ServerConnectionProvider } from '@/hooks/use-server-connection'
 import { useEffect, useState } from 'react'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -50,9 +51,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AttributeSchemaProvider>
-            {children}
-          </AttributeSchemaProvider>
+          <ServerConnectionProvider>
+            <AttributeSchemaProvider>
+              {children}
+            </AttributeSchemaProvider>
+          </ServerConnectionProvider>
         </ThemeProvider>
       </body>
     </html>

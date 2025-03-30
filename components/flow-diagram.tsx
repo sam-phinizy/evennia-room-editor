@@ -34,6 +34,8 @@ import { convertJsonToEvenniaBatchCode } from "@/lib/batchCodeConverter"
 import { useToast } from "@/components/ui/use-toast"
 import { roomApi, exitApi, type RoomResponse, type ExitResponse } from "@/lib/api-service"
 import LoadRoomsModal from "./load-rooms-modal"
+import { useServerConnection } from "@/hooks/use-server-connection"
+import ShowHiddenRooms from "./show-hidden-rooms"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -179,6 +181,7 @@ const FlowDiagramInner = () => {
   // Get schema at the component level, not inside a callback
   const { schema } = useAttributeSchema()
   const { toast } = useToast()
+  const { isConnected, enabled } = useServerConnection()
 
   // Save to local storage whenever nodes or edges change
   useEffect(() => {
@@ -1255,10 +1258,14 @@ const FlowDiagramInner = () => {
                 <Plus className="h-4 w-4" />
                 Add Room
               </Button>
-              <Button onClick={() => setLoadRoomsModalOpen(true)} variant="outline" className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Load Rooms
-              </Button>
+              {isConnected && enabled ? (
+                <Button onClick={() => setLoadRoomsModalOpen(true)} variant="outline" className="flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  Load Rooms
+                </Button>
+              ) : (
+                <ShowHiddenRooms />
+              )}
               <Button onClick={onClear} variant="outline">
                 Clear All
               </Button>

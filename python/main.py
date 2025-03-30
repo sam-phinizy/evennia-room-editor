@@ -78,6 +78,14 @@ async def root():
     return {"message": "Welcome to Room Editor API"}
 
 
+@app.get("/can-connect")
+async def can_connect():
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{evennia_server_path}/can-connect")
+        response.raise_for_status()
+        return response.json()
+
+
 @app.get("/room_graph")
 async def get_room_graph(start_room_id: int | None = None, depth: int | None = None):
     """

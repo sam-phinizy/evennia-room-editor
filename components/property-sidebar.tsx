@@ -27,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix
 import SchemaEditor from "./schema-editor"
 import { useToast } from "@/components/ui/use-toast"
 import { roomApi, exitApi } from "@/lib/api-service"
+import { useServerConnection } from "@/hooks/use-server-connection"
 
 interface PropertySidebarProps {
   selectedNode?: Node | null
@@ -113,6 +114,88 @@ const updateExitInApi = async (exitId: string | number, exitData: {
   }
 };
 
+// Connection Settings Panel component
+function ConnectionSettingsPanel() {
+  const { serverUrl, setServerUrl, isConnected, checkConnection, enabled, setEnabled } = useServerConnection()
+  const { toast } = useToast()
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Connection Settings</h3>
+      </div>
+      <div className="border-t pt-4">
+        <div className="space-y-4">
+          <div className="grid gap-2">
+            <Label htmlFor="server-url">Evennia Server URL</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="server-url"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                placeholder="http://localhost:8000"
+                className="flex-1"
+              />
+              <Button
+                onClick={async () => {
+                  const success = await checkConnection();
+                  toast({
+                    title: success ? "Connected" : "Failed to Connect",
+                    description: success ? "Successfully connected to server" : "Could not connect to the server. Check the URL and make sure the server is running.",
+                    variant: success ? "default" : "destructive",
+                  });
+                }}
+                variant="outline"
+                size="sm"
+              >
+                Test
+              </Button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1 text-sm">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>{isConnected ? 'Connected' : 'Not Connected'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="enable-api" className="text-sm"> Online Mode</Label>
+                <Switch 
+                  id="enable-api" 
+                  checked={enabled} 
+                  onCheckedChange={setEnabled} 
+                  disabled={!isConnected} 
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {isConnected && enabled 
+                ? "Changes will be synced with your Evennia server" 
+                : "Working in offline mode. Changes will only be saved locally."}
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Schema Configuration Panel component
+function SchemaConfigurationPanel({ schema, onSchemaChange }: { schema: AttributeSchemaItem[], onSchemaChange: (schema: AttributeSchemaItem[]) => void }) {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Schema Configuration</h3>
+      </div>
+      <div className="border-t pt-4">
+        <p className="text-sm text-muted-foreground mb-4">
+          Define a schema of attributes that can be applied to nodes and edges.
+          This helps maintain consistency across your diagram.
+        </p>
+        <SchemaEditor schema={schema} onSchemaChange={onSchemaChange} />
+      </div>
+    </>
+  )
+}
+
 export default function PropertySidebar({ selectedNode, selectedEdge }: PropertySidebarProps) {
   const { setNodes, setEdges, getNode, getEdge } = useReactFlow()
   const [newAttributeKey, setNewAttributeKey] = useState("")
@@ -128,6 +211,7 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
 
   const [activeTab, setActiveTab] = useState("properties")
   const { schema, setSchema } = useAttributeSchema()
+  const { serverUrl, setServerUrl, isConnected, checkConnection, enabled, setEnabled } = useServerConnection()
 
   const updateNodeData = useCallback(
     (key: string, value: string) => {
@@ -490,16 +574,9 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
             </TabsContent>
 
             <TabsContent value="settings" className="p-6 pt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Schema Configuration</h3>
-              </div>
-              <div className="border-t pt-4">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Define a schema of attributes that can be applied to nodes and edges.
-                  This helps maintain consistency across your diagram.
-                </p>
-                <SchemaEditor schema={schema} onSchemaChange={handleSchemaChange} />
-              </div>
+              <ConnectionSettingsPanel />
+              <div className="mt-6"></div>
+              <SchemaConfigurationPanel schema={schema} onSchemaChange={handleSchemaChange} />
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -909,16 +986,9 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
           </TabsContent>
 
           <TabsContent value="settings" className="p-6 pt-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Schema Configuration</h3>
-            </div>
-            <div className="border-t pt-4">
-              <p className="text-sm text-muted-foreground mb-4">
-                Define a schema of attributes that can be applied to nodes and edges.
-                This helps maintain consistency across your diagram.
-              </p>
-              <SchemaEditor schema={schema} onSchemaChange={handleSchemaChange} />
-            </div>
+            <ConnectionSettingsPanel />
+            <div className="mt-6"></div>
+            <SchemaConfigurationPanel schema={schema} onSchemaChange={handleSchemaChange} />
           </TabsContent>
         </Tabs>
 
