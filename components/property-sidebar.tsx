@@ -519,20 +519,6 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
           </TabsList>
 
           <TabsContent value="properties" className="p-6 pt-4 space-y-4">
-            <div className="flex gap-2">
-
-              {selectedNode && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onDuplicate}
-                  className="flex items-center gap-2"
-                >
-                  <Copy className="h-4 w-4" />
-                  Duplicate
-                </Button>
-              )}
-            </div>
 
             {selectedNode && (
               <Collapsible
