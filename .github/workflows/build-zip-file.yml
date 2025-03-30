@@ -1,0 +1,33 @@
+# This github workflow when triggered will build a zip file of the following files"
+# Every file in the `python` directory
+# It'll run `pnpm run export` to build the static site to `out`
+# It'll then include the `out` directory in the zip file
+# It'll then upload the zip file to the release assets for the latest release
+
+name: Build and Upload Zip File
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - name: Install dependencies
+        run: pnpm install
+      - name: Build the static site
+        run: pnpm run export
+      - name: Copy python files to out
+        run: cp -r python out/
+      - name: Create a zip file
+        uses: actions/upload-artifact@v3
+        with:
+          name: room-builder-app-${{ github.ref_name }}.zip
+          path: out
