@@ -7,7 +7,7 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  assetPrefix: "/app",
+  assetPrefix: "/static/website",
   eslint: {
     ignoreDuringBuilds: true,
   },
