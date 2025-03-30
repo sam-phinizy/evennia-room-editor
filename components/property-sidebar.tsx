@@ -1,14 +1,14 @@
 "use client"
 import { type Node, type Edge, useReactFlow } from "reactflow"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { Plus, X, Copy, Settings, ChevronDown, ChevronsUpDown } from "lucide-react"
+import { Plus, X, ChevronDown, ChevronsUpDown } from "lucide-react"
 import { useCallback, useState } from "react"
 import { useAttributeSchema, convertValueByType, getAttributeType, getAttributeChoices } from "@/hooks/use-attribute-schema"
-import AttributeSchemaModal, { AttributeSchemaItem } from "./attribute-schema-modal"
+import { AttributeSchemaItem } from "@/components/attribute-schema-modal"
 import {
   Select,
   SelectContent,
@@ -22,12 +22,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
-import SchemaEditor from "./schema-editor"
 import { useToast } from "@/components/ui/use-toast"
 import { roomApi, exitApi } from "@/lib/api-service"
-import { useServerConnection } from "@/hooks/use-server-connection"
 
 interface PropertySidebarProps {
   selectedNode?: Node | null
@@ -114,93 +111,10 @@ const updateExitInApi = async (exitId: string | number, exitData: {
   }
 };
 
-// Connection Settings Panel component
-function ConnectionSettingsPanel() {
-  const { serverUrl, setServerUrl, isConnected, checkConnection, enabled, setEnabled } = useServerConnection()
-  const { toast } = useToast()
-
-  return (
-    <>
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Connection Settings</h3>
-      </div>
-      <div className="border-t pt-4">
-        <div className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="server-url">Evennia Server URL</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="server-url"
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="http://localhost:8000"
-                className="flex-1"
-              />
-              <Button
-                onClick={async () => {
-                  const success = await checkConnection();
-                  toast({
-                    title: success ? "Connected" : "Failed to Connect",
-                    description: success ? "Successfully connected to server" : "Could not connect to the server. Check the URL and make sure the server is running.",
-                    variant: success ? "default" : "destructive",
-                  });
-                }}
-                variant="outline"
-                size="sm"
-              >
-                Test
-              </Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 text-sm">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span>{isConnected ? 'Connected' : 'Not Connected'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="enable-api" className="text-sm"> Online Mode</Label>
-                <Switch 
-                  id="enable-api" 
-                  checked={enabled} 
-                  onCheckedChange={setEnabled} 
-                  disabled={!isConnected} 
-                />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {isConnected && enabled 
-                ? "Changes will be synced with your Evennia server" 
-                : "Working in offline mode. Changes will only be saved locally."}
-            </p>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// Schema Configuration Panel component
-function SchemaConfigurationPanel({ schema, onSchemaChange }: { schema: AttributeSchemaItem[], onSchemaChange: (schema: AttributeSchemaItem[]) => void }) {
-  return (
-    <>
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Schema Configuration</h3>
-      </div>
-      <div className="border-t pt-4">
-        <p className="text-sm text-muted-foreground mb-4">
-          Define a schema of attributes that can be applied to nodes and edges.
-          This helps maintain consistency across your diagram.
-        </p>
-        <SchemaEditor schema={schema} onSchemaChange={onSchemaChange} />
-      </div>
-    </>
-  )
-}
-
 export default function PropertySidebar({ selectedNode, selectedEdge }: PropertySidebarProps) {
   const { setNodes, setEdges, getNode, getEdge } = useReactFlow()
   const [newAttributeKey, setNewAttributeKey] = useState("")
   const [newAttributeValue, setNewAttributeValue] = useState("")
-  const [schemaModalOpen, setSchemaModalOpen] = useState(false)
   const { toast } = useToast()
 
   // Collapsible section states
@@ -209,9 +123,7 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
   const [isTwoWayOpen, setIsTwoWayOpen] = useState(true)
   const [isAttributesOpen, setIsAttributesOpen] = useState(true)
 
-  const [activeTab, setActiveTab] = useState("properties")
   const { schema, setSchema } = useAttributeSchema()
-  const { serverUrl, setServerUrl, isConnected, checkConnection, enabled, setEnabled } = useServerConnection()
 
   const updateNodeData = useCallback(
     (key: string, value: string) => {
@@ -496,10 +408,6 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
     }
   }, [selectedNode, selectedEdge, getNode, getEdge, setNodes, setEdges, schema])
 
-  const handleSchemaChange = (newSchema: AttributeSchemaItem[]) => {
-    setSchema(newSchema)
-  }
-
   const addSchemaAttribute = useCallback((name: string) => {
     setNewAttributeKey(name)
 
@@ -553,32 +461,22 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
         <CardHeader className="pb-2">
         </CardHeader>
         <CardContent className="p-0">
-          <Tabs defaultValue="properties" value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 mx-6">
-              <TabsTrigger value="properties">Properties</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="properties" className="p-6 pt-4">
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Select a node or edge in the diagram to edit its properties. You can:
-                </p>
-                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li>Edit basic properties like title and description</li>
-                  <li>Add custom attributes</li>
-                  <li>Configure edge connections and aliases</li>
-                  <li>Apply schema attributes for consistency</li>
-                </ul>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="settings" className="p-6 pt-4 space-y-4">
-              <ConnectionSettingsPanel />
-              <div className="mt-6"></div>
-              <SchemaConfigurationPanel schema={schema} onSchemaChange={handleSchemaChange} />
-            </TabsContent>
-          </Tabs>
+          <div className="p-6 pt-4">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Select a node or edge in the diagram to edit its properties. You can:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                <li>Edit basic properties like title and description</li>
+                <li>Add custom attributes</li>
+                <li>Configure edge connections and aliases</li>
+                <li>Apply schema attributes for consistency</li>
+              </ul>
+              <p className="text-sm text-muted-foreground mt-4">
+                Click the gear icon in the top-left corner to access application settings.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
     )
@@ -587,17 +485,53 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
   return (
     <Card className="w-full h-full overflow-auto">
       <CardHeader className="pb-2">
+      Properties
       </CardHeader>
       <CardContent className="p-0">
-        <Tabs defaultValue="properties" value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-2 mx-6">
-            <TabsTrigger value="properties">Properties</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="properties" className="p-6 pt-4 space-y-4">
-
-            {selectedNode && (
+        <div className="p-6 pt-4 space-y-4">
+          {selectedNode && (
+            <Collapsible
+              open={isBasicPropsOpen}
+              onOpenChange={setIsBasicPropsOpen}
+              className="space-y-4 border rounded-md p-3"
+            >
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Basic Properties</Label>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    {isBasicPropsOpen ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronsUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+              <CollapsibleContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Title</Label>
+                  <Input
+                    id="title"
+                    value={selectedNode.data.label || ""}
+                    onChange={(e) => updateNodeData("label", e.target.value)}
+                    placeholder="Enter node title"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={selectedNode.data.description || ""}
+                    onChange={(e) => updateNodeData("description", e.target.value)}
+                    placeholder="Enter node description"
+                    className="min-h-[100px]"
+                  />
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+          {selectedEdge && (
+            <>
               <Collapsible
                 open={isBasicPropsOpen}
                 onOpenChange={setIsBasicPropsOpen}
@@ -617,387 +551,328 @@ export default function PropertySidebar({ selectedNode, selectedEdge }: Property
                 </div>
                 <CollapsibleContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
+                    <Label htmlFor="label">Title</Label>
                     <Input
-                      id="title"
-                      value={selectedNode.data.label || ""}
-                      onChange={(e) => updateNodeData("label", e.target.value)}
-                      placeholder="Enter node title"
+                      id="label"
+                      value={selectedEdge.data?.label || ""}
+                      onChange={(e) => updateEdgeData("label", e.target.value)}
+                      placeholder="Enter edge label"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
-                      value={selectedNode.data.description || ""}
-                      onChange={(e) => updateNodeData("description", e.target.value)}
-                      placeholder="Enter node description"
+                      value={selectedEdge.data?.description || ""}
+                      onChange={(e) => updateEdgeData("description", e.target.value)}
+                      placeholder="Enter edge description"
                       className="min-h-[100px]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Type</Label>
+                    <Input
+                      id="type"
+                      value={selectedEdge.data?.type || ""}
+                      onChange={(e) => updateEdgeData("type", e.target.value)}
+                      placeholder="Aliae"
                     />
                   </div>
                 </CollapsibleContent>
               </Collapsible>
-            )}
-            {selectedEdge && (
-              <>
-                <Collapsible
-                  open={isBasicPropsOpen}
-                  onOpenChange={setIsBasicPropsOpen}
-                  className="space-y-4 border rounded-md p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Basic Properties</Label>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        {isBasicPropsOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronsUpDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="label">Title</Label>
-                      <Input
-                        id="label"
-                        value={selectedEdge.data?.label || ""}
-                        onChange={(e) => updateEdgeData("label", e.target.value)}
-                        placeholder="Enter edge label"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea
-                        id="description"
-                        value={selectedEdge.data?.description || ""}
-                        onChange={(e) => updateEdgeData("description", e.target.value)}
-                        placeholder="Enter edge description"
-                        className="min-h-[100px]"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="type">Type</Label>
-                      <Input
-                        id="type"
-                        value={selectedEdge.data?.type || ""}
-                        onChange={(e) => updateEdgeData("type", e.target.value)}
-                        placeholder="Aliae"
-                      />
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
 
-                <Collapsible
-                  open={isAliasesOpen}
-                  onOpenChange={setIsAliasesOpen}
-                  className="space-y-4 border rounded-md p-3 mt-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Aliases</Label>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        {isAliasesOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronsUpDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Input
-                        id="aliases"
-                        value={Array.isArray(selectedEdge.data?.aliases)
-                          ? selectedEdge.data?.aliases.join(',')
-                          : (selectedEdge.data?.aliases ? JSON.parse(selectedEdge.data?.aliases).join(',') : '')}
-                        onChange={(e) => {
-                          // Convert comma-separated string to array
-                          const aliasesText = e.target.value;
-                          // Split by comma and trim each value
-                          const newAliases = aliasesText ? aliasesText.split(',').map(a => a.trim()) : [];
-                          // Store directly as an array, not as a JSON string
-                          updateEdgeData("aliases", newAliases);
-                        }}
-                        placeholder="North,n,no"
-                      />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Aliases are alternative names for this connection. Enter as a comma-separated list.
-                        Example: North,n,no
-                      </p>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-
-                <Collapsible
-                  open={isTwoWayOpen}
-                  onOpenChange={setIsTwoWayOpen}
-                  className="space-y-4 border rounded-md p-3 mt-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Two-Way Exit</Label>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        {isTwoWayOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronsUpDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="twoWay" className="cursor-pointer">Enable two-way exit</Label>
-                      <Switch
-                        id="twoWay"
-                        checked={selectedEdge.data?.twoWay || false}
-                        onCheckedChange={(checked) => updateEdgeData("twoWay", checked)}
-                      />
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">
-                      When enabled, a return exit will be created automatically with reverse properties.
+              <Collapsible
+                open={isAliasesOpen}
+                onOpenChange={setIsAliasesOpen}
+                className="space-y-4 border rounded-md p-3 mt-4"
+              >
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Aliases</Label>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      {isAliasesOpen ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronsUpDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Input
+                      id="aliases"
+                      value={Array.isArray(selectedEdge.data?.aliases)
+                        ? selectedEdge.data?.aliases.join(',')
+                        : (selectedEdge.data?.aliases ? JSON.parse(selectedEdge.data?.aliases).join(',') : '')}
+                      onChange={(e) => {
+                        // Convert comma-separated string to array
+                        const aliasesText = e.target.value;
+                        // Split by comma and trim each value
+                        const newAliases = aliasesText ? aliasesText.split(',').map(a => a.trim()) : [];
+                        // Store directly as an array, not as a JSON string
+                        updateEdgeData("aliases", newAliases);
+                      }}
+                      placeholder="North,n,no"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Aliases are alternative names for this connection. Enter as a comma-separated list.
+                      Example: North,n,no
                     </p>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
-                    {/* Only show reverse fields when two-way is enabled */}
-                    {selectedEdge.data?.twoWay && (
-                      <div className="space-y-3 pt-2 border-t">
-                        <div className="space-y-2">
-                          <Label htmlFor="reverseName">Reverse Name</Label>
-                          <Input
-                            id="reverseName"
-                            value={selectedEdge.data?.reverseName || selectedEdge.data?.label || ""}
-                            onChange={(e) => updateEdgeData("reverseName", e.target.value)}
-                            placeholder="Enter reverse exit name"
-                          />
-                        </div>
+              <Collapsible
+                open={isTwoWayOpen}
+                onOpenChange={setIsTwoWayOpen}
+                className="space-y-4 border rounded-md p-3 mt-4"
+              >
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Two-Way Exit</Label>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      {isTwoWayOpen ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronsUpDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="twoWay" className="cursor-pointer">Enable two-way exit</Label>
+                    <Switch
+                      id="twoWay"
+                      checked={selectedEdge.data?.twoWay || false}
+                      onCheckedChange={(checked) => updateEdgeData("twoWay", checked)}
+                    />
+                  </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="reverseAliases">Reverse Aliases</Label>
-                          <Input
-                            id="reverseAliases"
-                            value={Array.isArray(selectedEdge.data?.reverseAliases)
-                              ? selectedEdge.data?.reverseAliases.join(',')
-                              : (selectedEdge.data?.reverseAliases ?
-                                (typeof selectedEdge.data?.reverseAliases === 'string'
-                                  ? selectedEdge.data?.reverseAliases
-                                  : JSON.stringify(selectedEdge.data?.reverseAliases))
-                                : '')}
-                            onChange={(e) => {
-                              // Convert comma-separated string to array
-                              const aliasesText = e.target.value;
-                              // Split by comma and trim each value
-                              const newAliases = aliasesText ? aliasesText.split(',').map(a => a.trim()) : [];
-                              // Store directly as an array
-                              updateEdgeData("reverseAliases", newAliases);
-                            }}
-                            placeholder="South,s,so"
-                          />
-                        </div>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, a return exit will be created automatically with reverse properties.
+                  </p>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="reverseDescription">Reverse Description</Label>
-                          <Textarea
-                            id="reverseDescription"
-                            value={selectedEdge.data?.reverseDescription || ""}
-                            onChange={(e) => updateEdgeData("reverseDescription", e.target.value)}
-                            placeholder="Enter description for the return exit"
-                            className="min-h-[80px]"
-                          />
-                        </div>
+                  {/* Only show reverse fields when two-way is enabled */}
+                  {selectedEdge.data?.twoWay && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="space-y-2">
+                        <Label htmlFor="reverseName">Reverse Name</Label>
+                        <Input
+                          id="reverseName"
+                          value={selectedEdge.data?.reverseName || selectedEdge.data?.label || ""}
+                          onChange={(e) => updateEdgeData("reverseName", e.target.value)}
+                          placeholder="Enter reverse exit name"
+                        />
                       </div>
-                    )}
-                  </CollapsibleContent>
-                </Collapsible>
-              </>
-            )}
-            {/* Attributes Section */}
-            <Collapsible
-              open={isAttributesOpen}
-              onOpenChange={setIsAttributesOpen}
-              className="space-y-4 pt-4 border-t"
-            >
-              <div className="flex items-center justify-between">
-                <Label>Attributes</Label>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    {isAttributesOpen ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronsUpDown className="h-4 w-4" />
-                    )}
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-              <CollapsibleContent className="space-y-4">
 
+                      <div className="space-y-2">
+                        <Label htmlFor="reverseAliases">Reverse Aliases</Label>
+                        <Input
+                          id="reverseAliases"
+                          value={Array.isArray(selectedEdge.data?.reverseAliases)
+                            ? selectedEdge.data?.reverseAliases.join(',')
+                            : (selectedEdge.data?.reverseAliases ?
+                              (typeof selectedEdge.data?.reverseAliases === 'string'
+                                ? selectedEdge.data?.reverseAliases
+                                : JSON.stringify(selectedEdge.data?.reverseAliases))
+                              : '')}
+                          onChange={(e) => {
+                            // Convert comma-separated string to array
+                            const aliasesText = e.target.value;
+                            // Split by comma and trim each value
+                            const newAliases = aliasesText ? aliasesText.split(',').map(a => a.trim()) : [];
+                            // Store directly as an array
+                            updateEdgeData("reverseAliases", newAliases);
+                          }}
+                          placeholder="South,s,so"
+                        />
+                      </div>
 
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={applySchemaToSelected}
-                        className="flex items-center gap-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Apply Schema
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent className="bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs">
-                      Apply selected schema to the current data
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <div className="space-y-2">
-                  {getAttributes().map((attr) => (
-                    <div key={attr.key} className="flex items-center gap-2">
-                      <Input
-                        value={attr.key}
-                        readOnly
-                        className="flex-1 bg-muted"
-                      />
-                      {attr.type === "boolean" ? (
-                        <div className="flex flex-1 items-center justify-between">
-                          <Switch
-                            checked={attr.value === "true"}
-                            onCheckedChange={(checked) =>
-                              (selectedNode ? updateNodeData : updateEdgeData)(
-                                `attr_${attr.key}`,
-                                String(checked)
-                              )
-                            }
-                          />
-                        </div>
-                      ) : attr.type === "choices" && attr.choices ? (
-                        <Select
-                          value={attr.value}
-                          onValueChange={(value) =>
+                      <div className="space-y-2">
+                        <Label htmlFor="reverseDescription">Reverse Description</Label>
+                        <Textarea
+                          id="reverseDescription"
+                          value={selectedEdge.data?.reverseDescription || ""}
+                          onChange={(e) => updateEdgeData("reverseDescription", e.target.value)}
+                          placeholder="Enter description for the return exit"
+                          className="min-h-[80px]"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            </>
+          )}
+          {/* Attributes Section */}
+          <Collapsible
+            open={isAttributesOpen}
+            onOpenChange={setIsAttributesOpen}
+            className="space-y-4 pt-4 border-t"
+          >
+            <div className="flex items-center justify-between">
+              <Label>Attributes</Label>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  {isAttributesOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronsUpDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent className="space-y-4">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={applySchemaToSelected}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Apply Schema
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs">
+                    Apply selected schema to the current data
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <div className="space-y-2">
+                {getAttributes().map((attr) => (
+                  <div key={attr.key} className="flex items-center gap-2">
+                    <Input
+                      value={attr.key}
+                      readOnly
+                      className="flex-1 bg-muted"
+                    />
+                    {attr.type === "boolean" ? (
+                      <div className="flex flex-1 items-center justify-between">
+                        <Switch
+                          checked={attr.value === "true"}
+                          onCheckedChange={(checked) =>
                             (selectedNode ? updateNodeData : updateEdgeData)(
                               `attr_${attr.key}`,
-                              value
+                              String(checked)
                             )
                           }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select an option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {attr.choices.map((choice) => (
-                              <SelectItem key={choice} value={choice}>
-                                {choice}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          value={attr.value}
-                          onChange={(e) =>
-                            (selectedNode ? updateNodeData : updateEdgeData)(`attr_${attr.key}`, e.target.value)
-                          }
-                          className="flex-1"
                         />
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeAttribute(`attr_${attr.key}`)}
-                        className="h-10 w-10"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-end gap-2">
-                  {schema.length > 0 ? (
-                    <div className="flex-1 space-y-2">
-                      <Label htmlFor="schemaKey">Add from Schema</Label>
+                      </div>
+                    ) : attr.type === "choices" && attr.choices ? (
                       <Select
-                        value={newAttributeKey}
-                        onValueChange={(value) => addSchemaAttribute(value)}
+                        value={attr.value}
+                        onValueChange={(value) =>
+                          (selectedNode ? updateNodeData : updateEdgeData)(
+                            `attr_${attr.key}`,
+                            value
+                          )
+                        }
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select attribute" />
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select an option" />
                         </SelectTrigger>
                         <SelectContent>
-                          {getUnusedSchemaItems().map((item) => (
-                            <SelectItem key={item.name} value={item.name}>
-                              {item.name} ({item.type})
+                          {attr.choices.map((choice) => (
+                            <SelectItem key={choice} value={choice}>
+                              {choice}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                  ) : (
-                    <div className="flex-1 space-y-2">
-                      <Label htmlFor="attrKey">Key</Label>
+                    ) : (
                       <Input
-                        id="attrKey"
-                        value={newAttributeKey}
-                        onChange={(e) => setNewAttributeKey(e.target.value)}
-                        placeholder="Enter key"
+                        value={attr.value}
+                        onChange={(e) =>
+                          (selectedNode ? updateNodeData : updateEdgeData)(`attr_${attr.key}`, e.target.value)
+                        }
+                        className="flex-1"
                       />
-                    </div>
-                  )}
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeAttribute(`attr_${attr.key}`)}
+                      className="h-10 w-10"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-end gap-2">
+                {schema.length > 0 ? (
                   <div className="flex-1 space-y-2">
-                    <Label htmlFor="attrValue">Value</Label>
+                    <Label htmlFor="schemaKey">Add from Schema</Label>
+                    <Select
+                      value={newAttributeKey}
+                      onValueChange={(value) => addSchemaAttribute(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select attribute" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getUnusedSchemaItems().map((item) => (
+                          <SelectItem key={item.name} value={item.name}>
+                            {item.name} ({item.type})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="attrKey">Key</Label>
                     <Input
-                      id="attrValue"
-                      value={newAttributeValue}
-                      onChange={(e) => setNewAttributeValue(e.target.value)}
-                      placeholder="Enter value"
+                      id="attrKey"
+                      value={newAttributeKey}
+                      onChange={(e) => setNewAttributeKey(e.target.value)}
+                      placeholder="Enter key"
                     />
                   </div>
-                  <Button
-                    onClick={addAttribute}
-                    disabled={!newAttributeKey.trim()}
-                    className="h-10"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {/* If schema is present but want to add custom attributes */}
-                {schema.length > 0 && (
-                  <div className="flex items-end gap-2 border-t pt-4">
-                    <div className="flex-1 space-y-2">
-                      <Label htmlFor="customAttrKey">Custom Key</Label>
-                      <Input
-                        id="customAttrKey"
-                        value={newAttributeKey}
-                        onChange={(e) => setNewAttributeKey(e.target.value)}
-                        placeholder="Enter custom key"
-                      />
-                    </div>
-                    <div className="flex-1 invisible">
-                      <Label>Spacer</Label>
-                      <div className="h-10"></div>
-                    </div>
-                  </div>
                 )}
-              </CollapsibleContent>
-            </Collapsible>
-          </TabsContent>
-
-          <TabsContent value="settings" className="p-6 pt-4 space-y-4">
-            <ConnectionSettingsPanel />
-            <div className="mt-6"></div>
-            <SchemaConfigurationPanel schema={schema} onSchemaChange={handleSchemaChange} />
-          </TabsContent>
-        </Tabs>
-
-        <AttributeSchemaModal
-          open={schemaModalOpen}
-          onOpenChange={setSchemaModalOpen}
-          onSave={handleSchemaChange}
-          currentSchema={schema}
-        />
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="attrValue">Value</Label>
+                  <Input
+                    id="attrValue"
+                    value={newAttributeValue}
+                    onChange={(e) => setNewAttributeValue(e.target.value)}
+                    placeholder="Enter value"
+                  />
+                </div>
+                <Button
+                  onClick={addAttribute}
+                  disabled={!newAttributeKey.trim()}
+                  className="h-10"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {/* If schema is present but want to add custom attributes */}
+              {schema.length > 0 && (
+                <div className="flex items-end gap-2 border-t pt-4">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="customAttrKey">Custom Key</Label>
+                    <Input
+                      id="customAttrKey"
+                      value={newAttributeKey}
+                      onChange={(e) => setNewAttributeKey(e.target.value)}
+                      placeholder="Enter custom key"
+                    />
+                  </div>
+                  <div className="flex-1 invisible">
+                    <Label>Spacer</Label>
+                    <div className="h-10"></div>
+                  </div>
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
       </CardContent>
     </Card>
   )

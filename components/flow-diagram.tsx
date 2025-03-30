@@ -23,7 +23,7 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, Download, FileJson, Code, Database } from "lucide-react"
+import { Plus, Trash2, Download, FileJson, Code, Database, Settings } from "lucide-react"
 import CustomNode from "./custom-node"
 import CustomEdge from "./custom-edge"
 import PropertySidebar from "./property-sidebar"
@@ -36,6 +36,7 @@ import { roomApi, exitApi, type RoomResponse, type ExitResponse } from "@/lib/ap
 import LoadRoomsModal from "./load-rooms-modal"
 import { useServerConnection } from "@/hooks/use-server-connection"
 import ShowHiddenRooms from "./show-hidden-rooms"
+import SettingsModal from "./settings-modal"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -182,6 +183,7 @@ const FlowDiagramInner = () => {
   const { schema } = useAttributeSchema()
   const { toast } = useToast()
   const { isConnected, enabled } = useServerConnection()
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
 
   // Save to local storage whenever nodes or edges change
   useEffect(() => {
@@ -1254,6 +1256,15 @@ const FlowDiagramInner = () => {
             <MiniMap />
             <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
             <Panel position="top-right" className="flex gap-2">
+              <Button 
+                onClick={() => setSettingsModalOpen(true)} 
+                variant="outline" 
+                size="icon" 
+                className="rounded-full h-10 w-10" 
+                title="Settings"
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
               <Button onClick={onAddNode} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 Add Room
@@ -1296,6 +1307,10 @@ const FlowDiagramInner = () => {
         open={loadRoomsModalOpen}
         onOpenChange={setLoadRoomsModalOpen}
         onLoadRooms={loadRooms}
+      />
+      <SettingsModal 
+        open={settingsModalOpen}
+        onOpenChange={setSettingsModalOpen}
       />
     </ResizablePanelGroup>
   )
