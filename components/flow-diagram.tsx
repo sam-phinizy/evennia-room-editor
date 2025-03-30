@@ -37,6 +37,7 @@ import LoadRoomsModal from "./load-rooms-modal"
 import { useServerConnection } from "@/hooks/use-server-connection"
 import ShowHiddenRooms from "./show-hidden-rooms"
 import SettingsModal from "./settings-modal"
+import { createRoomInApi, createExitInApi, deleteRoomFromApi, deleteExitFromApi } from "@/lib/api-utils"
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -90,58 +91,6 @@ const applySchemaToNodeData = (nodeData: { [key: string]: any }, schema: Attribu
   })
   return nodeData
 }
-
-// Create a room in the API
-const createRoomInApi = async (roomData: { 
-  name: string; 
-  description: string; 
-  attributes?: Record<string, any>;
-}) => {
-  try {
-    const data = await roomApi.createRoom(roomData);
-    return data;
-  } catch (error) {
-    console.error("Error creating room in API:", error);
-    throw error;
-  }
-};
-
-// Create an exit in the API
-const createExitInApi = async (exitData: {
-  name: string;
-  description?: string;
-  source_id: string;
-  destination_id: string;
-  attributes?: Record<string, any>;
-}) => {
-  try {
-    const data = await exitApi.createExit(exitData);
-    return data;
-  } catch (error) {
-    console.error("Error creating exit in API:", error);
-    throw error;
-  }
-};
-
-// Delete a room from the API
-const deleteRoomFromApi = async (roomId: string | number) => {
-  try {
-    return await roomApi.deleteRoom(roomId);
-  } catch (error) {
-    console.error(`Error deleting room ${roomId} from API:`, error);
-    throw error;
-  }
-};
-
-// Delete an exit from the API
-const deleteExitFromApi = async (exitId: string | number) => {
-  try {
-    return await exitApi.deleteExit(exitId);
-  } catch (error) {
-    console.error(`Error deleting exit ${exitId} from API:`, error);
-    throw error;
-  }
-};
 
 // Load data from local storage
 const loadFromStorage = () => {
@@ -320,7 +269,7 @@ const FlowDiagramInner = () => {
         
         if (sourceNode && targetNode && oldEdge.data?.api_id) {
           // First delete the old exit
-          await exitApi.deleteExit(oldEdge.data.api_id);
+          await deleteExitFromApi(oldEdge.data.api_id);
           
           // Get API IDs for the new connection
           const sourceApiId = sourceNode.data.api_id || sourceNode.id;

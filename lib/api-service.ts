@@ -98,16 +98,6 @@ export interface RoomGraphResponse {
 export const roomApi = {
   // Create a room
   createRoom: async (roomData: RoomData): Promise<RoomResponse> => {
-    if (!isServerConnected()) {
-      // If not connected, create a mock response with a local ID
-      return {
-        id: Math.floor(Math.random() * -1000) - 1, // Use negative numbers for local IDs
-        name: roomData.name,
-        description: roomData.description,
-        attributes: roomData.attributes,
-      };
-    }
-
     try {
       const apiClient = createApiClient();
       const response = await apiClient.post<RoomResponse>("/room", roomData);

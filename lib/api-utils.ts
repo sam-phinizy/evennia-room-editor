@@ -2,6 +2,34 @@ import { Node, Edge, MarkerType } from "reactflow";
 import { extractAttributes } from "./flow-transformers";
 import { roomApi, exitApi } from "./api-service";
 
+const getApiUrl = (): string => {
+  if (typeof window === "undefined") return "";
+
+  try {
+    const savedUrl = localStorage.getItem("flow-diagram-server-url");
+    return savedUrl || "";
+  } catch (error) {
+    console.error("Error accessing localStorage:", error);
+    return "";
+  }
+};
+
+// Check if server is connected and enabled
+const isServerConnected = (): boolean => {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const url = getApiUrl();
+    const enabled = localStorage.getItem("flow-diagram-server-enabled");
+
+    // Must have both a valid URL and be enabled
+    return url.trim() !== "" && enabled === "true";
+  } catch (error) {
+    console.error("Error checking server connection status:", error);
+    return false;
+  }
+};
+
 /**
  * Create a room in the API
  */
@@ -10,6 +38,23 @@ export const createRoomInApi = async (roomData: {
   description: string;
   attributes?: Record<string, any>;
 }) => {
+  if (!isServerConnected()) {
+    // If not connected, create a mock response with a local ID
+    const nextId = localStorage.getItem("flow-diagram-next-id");
+    if (!nextId) {
+      localStorage.setItem("flow-diagram-next-id", "0");
+    }
+    // Use negative numbers for local IDs
+    const nextIdInt = parseInt(nextId || "0") - 1;
+    localStorage.setItem("flow-diagram-next-id", nextIdInt.toString());
+
+    return {
+      id: nextIdInt,
+      name: roomData.name,
+      description: roomData.description,
+      attributes: roomData.attributes,
+    };
+  }
   try {
     const data = await roomApi.createRoom(roomData);
     return data;

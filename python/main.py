@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
+from fastapi.staticfiles import StaticFiles
 
 evennia_server_path = "http://localhost:4001/ninja"
 
@@ -73,9 +74,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Room Editor API"}
+app.mount("/app", StaticFiles(directory="../out", html=True), name="static")
 
 
 @app.get("/can-connect")
