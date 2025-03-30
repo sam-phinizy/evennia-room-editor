@@ -7,8 +7,9 @@
 name: Build and Upload Zip File
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "v*" # Only trigger on tags that start with v
 
 jobs:
   build:
