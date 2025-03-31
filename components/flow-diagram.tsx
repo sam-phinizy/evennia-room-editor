@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import ReactFlow, {
   ReactFlowProvider,
   MiniMap,
@@ -1179,12 +1179,142 @@ const FlowDiagramInner = () => {
     }
   }, [nodes, edges, setNodes, setEdges, reactFlowInstance, toast])
 
+  // Function to expand a node and show connected rooms
+  const expandNode = useCallback(async (roomId: number) => {
+    // Call loadRooms with the node's API ID and a depth of 1
+    await loadRooms(roomId, 1);
+  }, [loadRooms]);
+
+  // Process nodes to inject the expandNode function
+  const processedNodes = useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        onExpand: expandNode
+      }
+    }));
+  }, [nodes, expandNode]);
+
+  // Handle node movement - update edge connection points based on node positions
+  const onNodeDragStop = useCallback((event: React.MouseEvent, draggedNode: Node) => {
+    // Only update edges if we have a draggedNode
+    if (!draggedNode) return;
+
+    // Find all edges connected to this node
+    const connectedEdges = edges.filter(
+      edge => edge.source === draggedNode.id || edge.target === draggedNode.id
+    );
+
+    if (connectedEdges.length === 0) return;
+
+    // Get all nodes for position calculation
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+
+    // Create updated edges
+    const updatedEdges = edges.map(edge => {
+      // Skip edges not connected to the dragged node
+      if (edge.source !== draggedNode.id && edge.target !== draggedNode.id) {
+        return edge;
+      }
+
+      const sourceNode = edge.source === draggedNode.id ? draggedNode : nodeMap.get(edge.source);
+      const targetNode = edge.target === draggedNode.id ? draggedNode : nodeMap.get(edge.target);
+
+      // Skip if either node is missing
+      if (!sourceNode || !targetNode) return edge;
+
+      // Calculate relative positions to determine best connection points
+      const xDiff = targetNode.position.x - sourceNode.position.x;
+      const yDiff = targetNode.position.y - sourceNode.position.y;
+
+      // Determine if the connection is more horizontal or vertical
+      const isHorizontal = Math.abs(xDiff) >= Math.abs(yDiff);
+
+      let sourceHandle, targetHandle;
+
+      // Check if there's a reverse edge (bidirectional connection)
+      const hasReverseEdge = edges.some(e => 
+        e.id !== edge.id && e.source === edge.target && e.target === edge.source
+      );
+
+      // For horizontal layouts
+      if (isHorizontal) {
+        if (xDiff > 0) {
+          // Target is to the right
+          sourceHandle = "right-source";
+          targetHandle = "left-target";
+        } else {
+          // Target is to the left
+          sourceHandle = "left-source";
+          targetHandle = "right-target";
+        }
+        
+        // For bidirectional edges, offset one slightly to avoid overlap
+        if (hasReverseEdge && edge.source > edge.target) {
+          // This is the "return" edge, offset it
+          if (yDiff >= 0) {
+            // Offset edges upward
+            sourceHandle = "top-source";
+            targetHandle = "top-target";
+          } else {
+            // Offset edges downward
+            sourceHandle = "bottom-source";
+            targetHandle = "bottom-target";
+          }
+        }
+      } 
+      // For vertical layouts
+      else {
+        if (yDiff > 0) {
+          // Target is below
+          sourceHandle = "bottom-source";
+          targetHandle = "top-target";
+        } else {
+          // Target is above
+          sourceHandle = "top-source";
+          targetHandle = "bottom-target";
+        }
+        
+        // For bidirectional edges, offset one slightly to avoid overlap
+        if (hasReverseEdge && edge.source > edge.target) {
+          // This is the "return" edge, offset it
+          if (xDiff >= 0) {
+            // Offset edges to the right
+            sourceHandle = "right-source";
+            targetHandle = "right-target";
+          } else {
+            // Offset edges to the left
+            sourceHandle = "left-source";
+            targetHandle = "left-target";
+          }
+        }
+      }
+
+      // Only update if handles are different from current ones
+      if (sourceHandle !== edge.sourceHandle || targetHandle !== edge.targetHandle) {
+        return {
+          ...edge,
+          sourceHandle,
+          targetHandle
+        };
+      }
+
+      return edge;
+    });
+
+    // Update edges if any changes were made
+    if (JSON.stringify(edges) !== JSON.stringify(updatedEdges)) {
+      setEdges(updatedEdges);
+    }
+  }, [nodes, edges, setEdges]);
+
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
       <ResizablePanel defaultSize={75} minSize={30}>
         <div className="w-full h-full" ref={reactFlowWrapper}>
           <ReactFlow
-            nodes={nodes}
+            nodes={processedNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -1195,6 +1325,7 @@ const FlowDiagramInner = () => {
             edgeTypes={edgeTypes}
             onSelectionChange={onSelectionChange}
             onReconnect={onReconnect}
+            onNodeDragStop={onNodeDragStop}
             connectOnClick={true}
             snapToGrid={true}
             snapGrid={[15, 15]}

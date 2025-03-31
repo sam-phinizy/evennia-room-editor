@@ -1,0 +1,13 @@
+version: "3"
+
+tasks:
+  local:dev:
+    cmds:
+      - npm run export
+      - mkdir -p local_dev/test_game/web/templates/editor
+      - cp out/index.html local_dev/test_game/web/templates/editor/index.html
+      - cp python/editor_api.py local_dev/test_game/web/website/editor_api.py
+      - cp python/editor.py local_dev/test_game/web/website/editor.py
+      - cp python/urls.py local_dev/test_game/web/website/urls.py
+      - cp -r out/_next local_dev/test_game/web/static/website
+      - pushd local_dev/test_game && ../.venv/bin/evennia restart && popd

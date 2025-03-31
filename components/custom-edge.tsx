@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getBezierPath, useReactFlow } from "reactflow"
 import { Input } from "@/components/ui/input"
 
@@ -20,7 +20,8 @@ export default function CustomEdge({
   selected,
 }: EdgeProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [label, setLabel] = useState(data?.label || "")
+  // Use data.label directly for rendering and only use state for editing
+  const [editingLabel, setEditingLabel] = useState("")
   const { setEdges } = useReactFlow()
   // Add state for label position offset
   const [labelOffset, setLabelOffset] = useState({ x: 0, y: 0 })
@@ -37,16 +38,22 @@ export default function CustomEdge({
     targetPosition,
   })
 
+  // Update local state when edge props change
+  useEffect(() => {
+    setIsTwoWay(data?.twoWay || false);
+  }, [data?.twoWay]);
+
   const onLabelDoubleClick = () => {
-    setIsEditing(true)
+    setEditingLabel(data?.label || "");
+    setIsEditing(true);
   }
 
   const onLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
-    setLabel(evt.target.value)
+    setEditingLabel(evt.target.value);
   }
 
   const onLabelBlur = () => {
-    setIsEditing(false)
+    setIsEditing(false);
     // Update the edge data with the new label
     setEdges((edges) =>
       edges.map((edge) => {
@@ -55,12 +62,12 @@ export default function CustomEdge({
             ...edge,
             data: {
               ...edge.data,
-              label,
+              label: editingLabel,
               labelOffset, // Save the label offset in edge data
               // Ensure aliases array exists if not already present
               aliases: edge.data?.aliases || [],
               twoWay: isTwoWay,
-              reverseName: edge.data?.reverseName || label, // Default to same name
+              reverseName: edge.data?.reverseName || editingLabel, // Default to same name
               reverseAliases: edge.data?.reverseAliases || edge.data?.aliases || [], // Default to same aliases
               reverseDescription: edge.data?.reverseDescription || "", // Default to empty description
             },
@@ -73,7 +80,7 @@ export default function CustomEdge({
 
   const onLabelKeyDown = (evt: React.KeyboardEvent<HTMLInputElement>) => {
     if (evt.key === "Enter") {
-      setIsEditing(false)
+      setIsEditing(false);
       // Update the edge data with the new label
       setEdges((edges) =>
         edges.map((edge) => {
@@ -82,12 +89,12 @@ export default function CustomEdge({
               ...edge,
               data: {
                 ...edge.data,
-                label,
+                label: editingLabel,
                 labelOffset, // Save the label offset in edge data
                 // Ensure aliases array exists if not already present
                 aliases: edge.data?.aliases || [],
                 twoWay: isTwoWay,
-                reverseName: edge.data?.reverseName || label, // Default to same name
+                reverseName: edge.data?.reverseName || editingLabel, // Default to same name
                 reverseAliases: edge.data?.reverseAliases || edge.data?.aliases || [], // Default to same aliases
                 reverseDescription: edge.data?.reverseDescription || "", // Default to empty description
               },
@@ -221,7 +228,7 @@ export default function CustomEdge({
         >
           {isEditing ? (
             <Input
-              value={label}
+              value={editingLabel}
               onChange={onLabelChange}
               onBlur={onLabelBlur}
               onKeyDown={onLabelKeyDown}
@@ -230,7 +237,7 @@ export default function CustomEdge({
             />
           ) : (
             <div className="px-1 py-0.5 flex items-center">
-              {label || "Double-click to edit"}
+              {data?.label || "Double-click to edit"}
               {aliases.length > 0 && (
                 <span className="text-xs ml-1 opacity-70">+{aliases.length}</span>
               )}

@@ -12,4 +12,4 @@ def builder_required(view_func):
 
 @builder_required
 def editor(request):
-    return render(request, "editor.html")
+    return render(request, "editor/index.html")

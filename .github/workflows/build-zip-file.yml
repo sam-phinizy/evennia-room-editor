@@ -29,8 +29,10 @@ jobs:
         run: pnpm run export
       - name: Copy python files to out
         run: cp -r python out/
+      - name: Rename out to room-builder-app
+        run: mv out room-builder-app
       - name: Create a zip file
-        run: zip -r room-builder-app.zip out
+        run: zip -r room-builder-app.zip room-builder-app
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')

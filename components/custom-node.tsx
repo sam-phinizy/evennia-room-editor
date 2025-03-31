@@ -4,14 +4,23 @@ import { useState } from "react"
 import { Handle, Position, type NodeProps, useReactFlow } from "reactflow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Trash2, Copy, EyeOff } from "lucide-react"
+import { Trash2, Copy, EyeOff, Expand } from "lucide-react"
 import { Button } from "./ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import DeleteConfirmationDialog from "./delete-confirmation-dialog"
 import { roomApi } from "@/lib/api-service"
 import { saveHiddenNode } from "./show-hidden-rooms"
 
-export default function CustomNode({ id, data, isConnectable, selected }: NodeProps) {
+// Define type for the node data
+interface CustomNodeData {
+  label: string;
+  description?: string;
+  api_id?: number;
+  onExpand?: (roomId: number) => Promise<void>;
+  [key: string]: any;
+}
+
+export default function CustomNode({ id, data, isConnectable, selected }: NodeProps<CustomNodeData>) {
   const [isEditing, setIsEditing] = useState(false)
   const [label, setLabel] = useState(data.label || "")
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -20,6 +29,30 @@ export default function CustomNode({ id, data, isConnectable, selected }: NodePr
 
   const handleDeleteClick = () => {
     setIsDeleteDialogOpen(true)
+  }
+
+  const handleExpand = async () => {
+    // This function will be implemented to expand connected rooms
+    // It will call the roomApi.readRoomGraph function with the current node's ID and depth=1
+    if (!data.api_id) {
+      toast({
+        title: "Cannot Expand",
+        description: "This room doesn't exist in the database yet",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    // We'll implement the expansion logic in flow-diagram.tsx and expose it through a prop
+    if (data.onExpand) {
+      data.onExpand(data.api_id)
+    } else {
+      toast({
+        title: "Expansion Not Available",
+        description: "Expand functionality not available",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleHide = () => {
@@ -152,6 +185,15 @@ export default function CustomNode({ id, data, isConnectable, selected }: NodePr
             onClick={handleDuplicate}
           >
             <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 rounded-full bg-background hover:bg-primary/80 hover:text-primary-foreground"
+            onClick={handleExpand}
+            title="Expand connected rooms"
+          >
+            <Expand className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"

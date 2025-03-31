@@ -1,20 +1,19 @@
 from __future__ import annotations
+
 from typing import Any
 
-
 from evennia.objects.models import ObjectDB
-from evennia.utils.dbserialize import _SaverDict
-from loguru import logger
+from evennia.utils.dbserialize import _SaverDict, _SaverList
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 from pydantic import ConfigDict, field_serializer
 
-from typeclasses.exits import Exit, DefaultExit
+from typeclasses.exits import DefaultExit, Exit
 from typeclasses.rooms import Room
 
 api = NinjaAPI()
 
-Attributes = dict[str, str | int | float | bool | _SaverDict | dict]
+Attributes = dict[str, str | int | float | bool | _SaverDict | _SaverList | dict]
 
 
 class BaseSchema(Schema):
@@ -25,14 +24,22 @@ class BaseSchema(Schema):
             if isinstance(value, _SaverDict):
                 # Custom serialization for SaverDict
                 result[key] = self.serialize_saver_dict(value)
+
+            elif isinstance(value, _SaverList):
+                # Custom serialization for SaverList
+                result[key] = self.serialize_saver_list(value)
             else:
                 # Other types are already serializable
                 result[key] = value
         return result
 
+    def serialize_saver_list(self, saver_list: _SaverList) -> dict[str, Any]:
+        return {
+            "__type__": "_SaverList",
+            "data": list(saver_list),
+        }
+
     def serialize_saver_dict(self, saver_dict: _SaverDict) -> dict[str, Any]:
-        # Implement your custom SaverDict serialization logic here
-        # This is just an example:
         return {
             "__type__": "_SaverDict",
             "data": dict(saver_dict),  # Or any other format you prefer
@@ -63,51 +70,6 @@ class RoomNamesListEntry(BaseSchema):
     name: str
 
 
-def get_room_names() -> list[RoomNamesListEntry]:
-    try:
-        rooms = Room.objects.all()
-    except Exception as e:
-        logger.error(f"Error getting rooms: {e}")
-        raise e
-    return [
-        RoomNamesListEntry(id=dbref_to_id(room.dbref), name=room.key) for room in rooms
-    ]
-
-
-@api.get("/rooms/names", response=list[RoomNamesListEntry])
-def get_rooms(request):
-    try:
-        return get_room_names()
-    except Exception as e:
-        logger.error(f"Error getting rooms: {e}")
-        raise HttpError(status_code=500, message="Error getting rooms")
-
-
-def build_attributes(obj: ObjectDB) -> Attributes:
-    """
-    Build a dictionary of attributes for an object.
-    """
-    logger.info(f"Building attributes for {obj.key}")
-    attributes = {}
-    for attr in obj.attributes.all():
-        attributes[attr.key] = attr.value
-    return attributes
-
-
-Tags = dict[str, str]
-
-
-def build_tags(obj: ObjectDB) -> Tags:
-    """
-    Build a dictionary of tags for an object.
-    """
-    logger.info(f"Building tags for {obj.key}")
-    tags = {}
-    for tag in obj.tags.all():
-        tags[tag.key] = tag.value
-    return tags
-
-
 class ExitSchema(BaseSchema):
     id: int
     name: str
@@ -131,15 +93,90 @@ class ExitSchema(BaseSchema):
         )
 
 
+class RoomGraphSchema(BaseSchema):
+    rooms: dict[int, RoomSchema]
+    exits: dict[int, ExitSchema]
+
+
+class RoomUpsertSchema(BaseSchema):
+    name: str
+    desc: str | None = None
+    description: str | None = None
+    tags: Tags | None = None
+    attributes: Attributes | None = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class RoomCreateSchema(RoomUpsertSchema):
+    name: str
+
+
+def get_room_objects() -> list[Room]:
+    """
+    Get all room objects. You should override this if you use a custom room class, or have a different logic for getting rooms.
+    """
+    try:
+        rooms = ObjectDB.objects.filter(db_typeclass_path__icontains="room")
+    except Exception as e:
+        print(f"Error getting rooms: {e}")
+        raise e
+    return list(rooms)
+
+
+def get_room_names() -> list[RoomNamesListEntry]:
+    try:
+        rooms = get_room_objects()
+    except Exception as e:
+        print(f"Error getting rooms: {e}")
+        raise e
+    return [
+        RoomNamesListEntry(id=dbref_to_id(room.dbref), name=room.key) for room in rooms
+    ]
+
+
+@api.get("/rooms/names", response=list[RoomNamesListEntry])
+def get_rooms(request):
+    try:
+        return get_room_names()
+    except Exception as e:
+        print(f"Error getting rooms: {e}")
+        raise HttpError(status_code=500, message="Error getting rooms")
+
+
+def build_attributes(obj: ObjectDB) -> Attributes:
+    """
+    Build a dictionary of attributes for an object.
+    """
+    print(f"Building attributes for {obj.key}")
+    attributes = {}
+    for attr in obj.attributes.all():
+        attributes[attr.key] = attr.value
+    return attributes
+
+
+Tags = dict[str, str]
+
+
+def build_tags(obj: ObjectDB) -> Tags:
+    """
+    Build a dictionary of tags for an object.
+    """
+    print(f"Building tags for {obj.key}")
+    tags = {}
+    for tag in obj.tags.all():
+        tags[tag.key] = tag.value
+    return tags
+
+
 def build_exits(room: Room) -> list[ExitSchema]:
     """
     Build a list of exits for a room.
     """
-    logger.info(f"Building exits for {room.key}")
+    print(f"Building exits for {room.key}")
     exits = []
     try:
         for exit in room.exits:
-            logger.info(f"Exit: {exit.key}")
+            print(f"Exit: {exit.key}")
             exits.append(
                 ExitSchema(
                     id=exit.id,
@@ -152,7 +189,7 @@ def build_exits(room: Room) -> list[ExitSchema]:
                 )
             )
     except Exception as e:
-        logger.error(f"Error building exits for {room.key}: {e}")
+        print(f"Error building exits for {room.key}: {e}")
     return exits
 
 
@@ -170,7 +207,7 @@ def get_room_by_id(room_id: int) -> RoomSchema:
     try:
         room = ObjectDB.objects.get(id=room_id)
     except Exception as e:
-        logger.error(f"Error getting room {room_id}: {e}")
+        print(f"Error getting room {room_id}: {e}")
         raise HttpError(status_code=500, message="Error getting room")
 
     try:
@@ -182,7 +219,7 @@ def get_room_by_id(room_id: int) -> RoomSchema:
             exits=build_exits(room),
         )
     except Exception as e:
-        logger.error(f"Error building room {room.key}: {e}")
+        print(f"Error building room {room.key}: {e}")
         raise e
 
 
@@ -191,13 +228,8 @@ def get_room(request, room_id: int):
     try:
         return get_room_by_id(room_id)
     except Exception as e:
-        logger.error(f"Error getting room {room_id}: {e}")
+        print(f"Error getting room {room_id}: {e}")
         raise HttpError(status_code=500, message="Error getting room")
-
-
-class RoomGraphSchema(BaseSchema):
-    rooms: dict[int, RoomSchema]
-    exits: dict[int, ExitSchema]
 
 
 def get_room_graph_by_id(start_room_id: int, depth: int = 1) -> RoomGraphSchema:
@@ -235,19 +267,6 @@ def get_room_graph(request, start_room_id: int, depth: int = 1):
     except Exception as e:
         print(f"Error getting room graph: {e}")
         raise HttpError(status_code=500, message="Error getting room graph")
-
-
-class RoomUpsertSchema(BaseSchema):
-    name: str
-    desc: str | None = None
-    description: str | None = None
-    tags: Tags | None = None
-    attributes: Attributes | None = None
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class RoomCreateSchema(RoomUpsertSchema):
-    name: str
 
 
 @api.post("/room/{room_id}")
@@ -338,3 +357,39 @@ def create_exit(request, exit_create: ExitCreateSchema) -> ExitSchema:
     except Exception as e:
         print(f"Error creating exit {exit_create.name}: {e}")
         raise {"error": str(e), "status_code": 500, "meta": "error with evennia server"}
+
+
+class ExitUpdateSchema(BaseSchema):
+    name: str | None = None
+    source_id: int | None = None
+    destination_id: int | None = None
+    attributes: Attributes | None = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+@api.post("/exit/{exit_id}")
+def update_exit(request, exit_id: int, exit_update: ExitUpdateSchema) -> ExitSchema:
+    try:
+        exit = ObjectDB.objects.get(id=exit_id)
+    except Exception as e:
+        print(f"Error getting exit {exit_id}: {e}")
+        raise HttpError(status_code=500, message="Error getting exit")
+
+    if exit_update.name is not None:
+        exit.key = exit_update.name
+
+    if exit_update.source_id is not None:
+        exit.location = Room.objects.get(id=exit_update.source_id)
+
+    if exit_update.destination_id is not None:
+        exit.destination = Room.objects.get(id=exit_update.destination_id)
+
+    if exit_update.attributes is not None:
+        for key, value in exit_update.attributes.items():
+            exit.attributes.add(key, value)
+
+    exit.cmdset.add_default(exit.create_exit_cmdset(exit), persistent=False)
+
+    exit.save()
+
+    return ExitSchema.from_exit(exit)
