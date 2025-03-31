@@ -1,23 +1,51 @@
 from __future__ import annotations
+from typing import Any
 
 
 from evennia.objects.models import ObjectDB
+from evennia.utils.dbserialize import _SaverDict
 from loguru import logger
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
+from pydantic import ConfigDict, field_serializer
 
 from typeclasses.exits import Exit, DefaultExit
 from typeclasses.rooms import Room
 
 api = NinjaAPI()
 
+Attributes = dict[str, str | int | float | bool | _SaverDict | dict]
 
-class RoomSchema(Schema):
+
+class BaseSchema(Schema):
+    @field_serializer("attributes", check_fields=False)
+    def serialize_attributes(self, attributes: Attributes) -> Attributes:
+        result = {}
+        for key, value in attributes.items():
+            if isinstance(value, _SaverDict):
+                # Custom serialization for SaverDict
+                result[key] = self.serialize_saver_dict(value)
+            else:
+                # Other types are already serializable
+                result[key] = value
+        return result
+
+    def serialize_saver_dict(self, saver_dict: _SaverDict) -> dict[str, Any]:
+        # Implement your custom SaverDict serialization logic here
+        # This is just an example:
+        return {
+            "__type__": "_SaverDict",
+            "data": dict(saver_dict),  # Or any other format you prefer
+        }
+
+
+class RoomSchema(BaseSchema):
     id: int
-    attributes: dict[str, str]
+    attributes: Attributes
     name: str
     tags: Tags
     exits: list[ExitSchema]
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def from_room(cls, room: Room) -> RoomSchema:
@@ -30,7 +58,7 @@ class RoomSchema(Schema):
         )
 
 
-class RoomNamesListEntry(Schema):
+class RoomNamesListEntry(BaseSchema):
     id: int
     name: str
 
@@ -55,7 +83,7 @@ def get_rooms(request):
         raise HttpError(status_code=500, message="Error getting rooms")
 
 
-def build_attributes(obj: ObjectDB) -> dict[str, str]:
+def build_attributes(obj: ObjectDB) -> Attributes:
     """
     Build a dictionary of attributes for an object.
     """
@@ -80,14 +108,15 @@ def build_tags(obj: ObjectDB) -> Tags:
     return tags
 
 
-class ExitSchema(Schema):
+class ExitSchema(BaseSchema):
     id: int
     name: str
     source_name: str
     source_id: int
     destination_name: str
     destination_id: int
-    attributes: dict[str, str]
+    attributes: Attributes
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def from_exit(cls, exit: Exit | DefaultExit) -> ExitSchema:
@@ -139,7 +168,7 @@ def get_room_by_id(room_id: int) -> RoomSchema:
     Get a room by id.
     """
     try:
-        room = Room.objects.get(id=room_id)
+        room = ObjectDB.objects.get(id=room_id)
     except Exception as e:
         logger.error(f"Error getting room {room_id}: {e}")
         raise HttpError(status_code=500, message="Error getting room")
@@ -166,7 +195,7 @@ def get_room(request, room_id: int):
         raise HttpError(status_code=500, message="Error getting room")
 
 
-class RoomGraphSchema(Schema):
+class RoomGraphSchema(BaseSchema):
     rooms: dict[int, RoomSchema]
     exits: dict[int, ExitSchema]
 
@@ -208,12 +237,13 @@ def get_room_graph(request, start_room_id: int, depth: int = 1):
         raise HttpError(status_code=500, message="Error getting room graph")
 
 
-class RoomUpsertSchema(Schema):
+class RoomUpsertSchema(BaseSchema):
     name: str
     desc: str | None = None
     description: str | None = None
-    tags: dict[str, str] | None = None
-    attributes: dict[str, str] | None = None
+    tags: Tags | None = None
+    attributes: Attributes | None = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class RoomCreateSchema(RoomUpsertSchema):
